@@ -9,7 +9,7 @@ describe('Testing app', function () {
       type: 'remote',
       options: {
         entrypoint: {
-          address: '192.168.1.200',
+          address: '192.168.1.111',
           port: 8008,
           identity: {
             'username': 'indata',
