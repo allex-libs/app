@@ -1,7 +1,10 @@
 function createLib(execlib) {
   'use strict';
-  var UserRepresentation = require('./userrepresentationcreator')(execlib),
-    createApp = require('./appcreator')(execlib, UserRepresentation);
+  var AppSuite = require('./appcreator')(execlib);
+
+  function createApp(desc) {
+    return new App(desc);
+  }
 
   return {
     createApp: createApp

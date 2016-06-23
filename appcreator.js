@@ -1,85 +1,73 @@
-function createApp(execlib, UserRepresentation) {
+function createAppSuite (execlib){
   'use strict';
-  var lib = execlib.lib;
 
-  function App (options) {
+  var lib = execlib.lib,
+    environmentFactory = require('./environments/factorycreator.js')(execlib, require('./datasources')(execlib)),
+    elementFactory,
+    pageFactory;
+
+  function toString (item) {
+    return JSON.stringify(item, null, 2);
   }
 
-  function LocalApp (options) {
-    App.call(this, options);
-  }
-  lib.inherit(LocalApp, App);
 
-  function RemoteApp (options) {
-    App.call(this, options);
-    this.address = options.entrypoint.address;
-    this.port = options.entrypoint.port;
-    this.identity = options.entrypoint.identity;
-    this.userRepresentation = new UserRepresentation();
-  }
-  lib.inherit(RemoteApp, App);
-  RemoteApp.prototype.go = function () {
-    execlib.loadDependencies('client', [
-      '.',
-      'allex:users'
-    ], this.sendRequest.bind(this));
-  };
-  RemoteApp.prototype.sendRequest = function () {
-    lib.request('http://'+this.address+':'+this.port+'/letMeIn', {
-      parameters: {
-        username: this.identity.username,
-        password: this.identity.password
-      },
-      onComplete: this.onResponse.bind(this),
-      onError: console.error.bind(console, 'oopsie')
-    });
-  }
-  RemoteApp.prototype.onResponse = function (response) {
-    if (!response) {
-      //error handling
-    }
-    if (response.data) {
-      try {
-        var response = JSON.parse(response.data);
-        execlib.execSuite.taskRegistry.run('acquireSink', {
-          connectionString: 'ws://'+response.ipaddress+':'+response.port,
-          session: response.session,
-          onSink:this._onSink.bind(this)
-        });
-      } catch(e) {
-        console.error(e.stack);
-        console.error(e);
-        //error handling
-      }
-    }
-  };
-  RemoteApp.prototype._onSink = function (sink) {
-    execlib.execSuite.taskRegistry.run('acquireUserServiceSink', {
-      sink: sink,
-      cb: this._onAcquired.bind(this)
-    });
-  };
-  RemoteApp.prototype._onAcquired = function (sink) {
-    this.userRepresentation.setSink(sink);
-    console.log(this.userRepresentation);
-  };
-
-  function createApp (desc) {
-    var ctor;
-    switch (desc.type) {
-      case 'local':
-        ctor = LocalApp;
-        break;
-      case 'remote':
-        ctor = RemoteApp;
-        break;
-      default:
-        throw new lib.JSONizedError('UNSUPPORTED_APP_TYPE', desc, 'Unsupported type:');
-    }
-    return new ctor(desc.options);
+  function linkEnvironment (environments, item) {
+    if (!item.name) throw new Error('Environment has no name: '+toString(item));
+    environments.add (item.name, environmentFactory (item));
   }
 
-  return createApp;
+  function linkDataSource (environments, datasources, item) {
+    if (!item.name) throw new Error ('Datasource has no name: '+toString(item));
+    if (!item.environment) throw new Error('Datasource has no environment: '+toString(item));
+
+    var e = environments.get(item.environment);
+    if (!e) throw new Error ('Unknown environment '+item.environment);
+
+    var ds_name = item.source || item.name, ds = environments.dataSources.get(ds_name));
+    if (!ds) throw new Error ('Data source not found '+ds_name);
+    datasources.add(item.name, e.dataSources.get(item.source || item.name));
+  }
+
+  function linkCommand (commands, environments, item) {
+    if (!item.command) throw new Error('No command in '+toString(item));
+    if (!item.environment) throw new Error('No environment in '+toString(item));
+
+    var e = environments.get(item.environment);
+    if (!e) throw new Error('Unable to find environment '+item.environment);
+    var c_name = item.ecommand || item.command, c = e.commands.get(c_name);
+
+    if (!c) throw new Error('Unable to find command '+c_name+' in environment '+item.environment);
+    commands.add(item.command, c);
+  }
+
+  function linkElements (elements, item){
+    if (!item.name) throw new Error('Element has no name '+toString(item));
+    if (!item.type) throw new Error('Element has no type '+toString(item));
+    elements.add(item.name, elementFactory(item));
+  }
+
+  function linkPage (pages, elements, item) {
+    if (!item.name) throw new Error('Page must have a name '+toString(item));
+    if (!item.elements || !item.elements.length) throw new Error('Page must have at least one element');
+
+    pages.add (item.name, pageFactory(item));
+  }
+
+  function App(desc){
+    this.environments = new lib.Map();
+    this.datasources = new lib.Map();
+    this.commands = new lib.Map();
+    this.pages = new lib.Map ();
+    this.elements = new lib.Map ();
+
+    lib.traverseShallow (desc.environments, linkEnvironment.bind(null, this.environments));
+    lib.traverseShallow (desc.datasources, linkDatasource.bind(null,this.environments, this.datasources));
+    lib.traverseShallow (desc.commands, linkCommand.bind(null, this.environments, this.commands));
+    lib.traverseShallow (desc.elements, linkElement.bind(null, this.elements));
+    lib.traverseShallow (desc.pages, linkPage.bind(null, this.pages, this.elements));
+  }
+
+  return App;
 }
 
-module.exports = createApp;
+module.exports = createAppSuite;
