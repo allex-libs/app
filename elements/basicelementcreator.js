@@ -35,12 +35,8 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
   lib.inheritMethods (BasicElement, CLDestroyable, 'get', 'set', 'fireEvent');
 
-  BasicElement.prototype.attachListener = function (cborpropname, cb) {
-    if ('destroyed' === cborpropname) {
-      return Listenable.prototype.attachListener.call(this, 'destroyed', cb);
-    }
-    return CLDestroyable.prototype.attachListener.call(this, cborpropname, cb);
-  };
+  //we need this lazy one: specify eventname and do not call immediatelly like CLDestroyable's attachListener does ...
+  BasicElement.prototype.attachListener = Listenable.prototype.attachListener;
 
   function findById (id, item) {
     if (id === item.get('id')) return item;
@@ -85,7 +81,15 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
     return sp;
   };
 
+  BasicElement.prototype.set_actual = function (val) {
+    this.actual = val;
+  };
+
   BasicElement.prototype.childChanged = function (el, name, value) {
+    if ('actual' === name && value) {
+      this.set('actual', true);
+      return; ///this one will emmit childChanged ....
+    }
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
 

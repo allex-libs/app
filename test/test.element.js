@@ -20,6 +20,7 @@ lib.inherit (Type2, BasicElement);
 
 
 describe ('Simple element registry operations', function () {
+  var deep;
   it ('Register a type', function () {
     registerElementType ('type1', Type1);
     registerElementType ('type2', Type2);
@@ -74,7 +75,7 @@ describe ('Simple element registry operations', function () {
   });
 
   it ('Create a pretty deeep structure', function () {
-    var t3 = elementFactory ({
+    deep = elementFactory ({
       name : 'jedan',
       type : 'type1',
       options : {
@@ -131,8 +132,19 @@ describe ('Simple element registry operations', function () {
       }
     });
 
-    var sedam = t3.childAtPath('dva.tri.pet.sest.sedam');
+    var sedam = deep.childAtPath('dva.tri.pet.sest.sedam');
     expect (sedam).to.be.instanceof(Type2);
     expect (sedam.get('id')).to.be.equal('sedam');
+  });
+
+  it ('Test actual setting' , function () {
+    var sedam = deep.childAtPath('dva.tri.pet.sest.sedam');
+    sedam.set('actual', true);
+    expect(sedam.get('actual')).to.be.true;
+    expect(deep.get('actual')).to.be.true;
+
+    sedam.set('actual', false);
+    expect(sedam.get('actual')).to.be.false;
+    expect(deep.get('actual')).to.be.true;
   });
 });
