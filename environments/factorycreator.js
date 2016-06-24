@@ -1,7 +1,9 @@
 function createEnvironmentFactory (execlib, dataSourceRegistry) {
   'use strict';
   var EnvironmentBase = require('./basecreator')(execlib),
-    AllexEnvironment = require('./allexcreator')(execlib, EnvironmentBase);
+    UserRepresentation = require('./userrepresentationcreator')(execlib),
+    AllexEnvironment = require('./allexcreator')(execlib, dataSourceRegistry, EnvironmentBase),
+    AllexRemoteEnvironment = require('./allexremotecreator')(execlib, dataSourceRegistry, AllexEnvironment, UserRepresentation);
 
 
   function createFromConstructor (ctor, options) {
@@ -18,7 +20,7 @@ function createEnvironmentFactory (execlib, dataSourceRegistry) {
 
   function environmentFactory (desc) {
     switch (desc.type) {
-      case 'allexremote' : return new AllexEnvironment (desc.options);
+      case 'allexremote' : return new AllexRemoteEnvironment (desc.options);
       case 'fromctor' : return createFromConstructor(desc.options.ctor, desc.options.options);
       default : throw new Error('Environment type '+desc.type+' not supported');
     }
