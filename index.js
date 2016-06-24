@@ -1,13 +1,16 @@
 function createLib(execlib) {
   'use strict';
-  var AppSuite = require('./appcreator')(execlib);
+  var lib = execlib.lib,
+    App = require('./appcreator')(execlib),
+    Elements = require('./elements');
 
   function createApp(desc) {
-    return new App(desc);
+    return new App(desc, elementFactory);
   }
 
   return {
-    createApp: createApp
+    createApp: createApp,
+    registerElementType : Elements.registerElementType
   };
 }
 

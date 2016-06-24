@@ -16,5 +16,8 @@
     "lib"
   ],
   "author": "HERS Belgrade",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "allex_hierarchymixinslowlevellib": "^1.0.0"
+  }
 }
