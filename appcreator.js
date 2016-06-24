@@ -23,7 +23,7 @@ function createAppSuite (execlib){
     var e = environments.get(item.environment);
     if (!e) throw new Error ('Unknown environment '+item.environment);
 
-    var ds_name = item.source || item.name, ds = environments.dataSources.get(ds_name));
+    var ds_name = item.source || item.name, ds = environments.dataSources.get(ds_name);
     if (!ds) throw new Error ('Data source not found '+ds_name);
     datasources.add(item.name, e.dataSources.get(item.source || item.name));
   }
@@ -54,7 +54,7 @@ function createAppSuite (execlib){
   }
 
   function App(desc){
-    this.environments = new lib.Map();
+    this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
     this.pages = new lib.Map ();
