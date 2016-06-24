@@ -1,7 +1,6 @@
 var expect = require('chai').expect,
   execlib = require('allex'),
-  dataSourceRegistry = require('../datasources/')(execlib),
-  factory = require('../environments/factorycreator')(execlib, dataSourceRegistry),
+  factory = require('../environments/factorycreator')(execlib),
   desc = {
     type: 'allexremote',
     name: 'INDATA',
@@ -52,6 +51,7 @@ var expect = require('chai').expect,
       ]
     }
   };
+
 
 describe('Testing the environments', function () {
   it ('Remote connectivity', function (done) {

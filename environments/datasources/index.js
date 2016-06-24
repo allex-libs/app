@@ -1,6 +1,7 @@
 function createDataSourceRegistry (execlib) {
   'use strict';
-  var AllexState = require('./allexstatecreator')(execlib),
+  var DataSourceBase = require('./basecreator')(execlib),
+    AllexState = require('./allexstatecreator')(execlib, DataSourceBase),
     AllexHash2Array = require('./allexhash2arraycreator')(execlib, AllexState);
 
   return {

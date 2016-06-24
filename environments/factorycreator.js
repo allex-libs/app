@@ -1,6 +1,7 @@
-function createEnvironmentFactory (execlib, dataSourceRegistry) {
+function createEnvironmentFactory (execlib) {
   'use strict';
-  var EnvironmentBase = require('./basecreator')(execlib),
+  var dataSourceRegistry = require('./datasources')(execlib),
+    EnvironmentBase = require('./basecreator')(execlib),
     UserRepresentation = require('./userrepresentationcreator')(execlib),
     AllexEnvironment = require('./allexcreator')(execlib, dataSourceRegistry, EnvironmentBase),
     AllexRemoteEnvironment = require('./allexremotecreator')(execlib, dataSourceRegistry, AllexEnvironment, UserRepresentation);
