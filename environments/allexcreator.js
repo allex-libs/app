@@ -28,7 +28,7 @@ function createAllexEnvironment (execlib, dataSourceRegistry, EnvironmentBase) {
       default:
         throw new lib.Error('DATASOURCE_TYPE_NOT_APPLICABLE_TO_ALLEX_ENVIRONMENT', type);
     }
-    return q(new ctor(sink, options.path));
+    return q(new ctor(sink, options));
   };
   AllexEnvironment.prototype.createCommand = function (options) {
   };
