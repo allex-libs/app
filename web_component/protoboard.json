@@ -1,0 +1,12 @@
+{
+  "js": {
+    "browserified" : [
+      "../browserify.js"
+    ]
+  },
+  "exclude": {
+    "jshint": [
+      "browserified.js"
+    ]
+  }
+}

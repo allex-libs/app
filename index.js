@@ -10,7 +10,8 @@ function createLib(execlib) {
 
   return {
     createApp: createApp,
-    registerElementType : Elements.registerElementType
+    registerElementType : Elements.registerElementType,
+    BasicElement : Elements.BasicElement
   };
 }
 
