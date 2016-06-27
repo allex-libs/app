@@ -121,6 +121,7 @@ describe('Testing app', function () {
     });
 
     app.go();
+    done();
   });
 });
 

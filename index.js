@@ -5,7 +5,7 @@ function createLib(execlib) {
     Elements = require('./elements');
 
   function createApp(desc) {
-    return new App(desc, elementFactory);
+    return new App(desc);
   }
 
   return {

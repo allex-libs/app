@@ -1,7 +1,10 @@
 function createCommand (lib) {
   'use strict';
-  function AppSideCommand (environment, comand) {
-    this.environment = environment;
+
+  var Settable = lib.Settable;
+
+  function AppSideCommand (command) {
+    this.environment = null;
     this.command = command;
     this.target = null;
   }
@@ -14,8 +17,11 @@ function createCommand (lib) {
   };
 
   AppSideCommand.prototype.execute = function () {
-    if (!this.target) return q.reject(new Error('Not connected'));
-    return this.target.execute.apply (this.target, arguments);
+    if (!this.environment) return q.reject(new Error('Not connected'));
+    var target = this.environment.commands.get(this.command);
+    if (!target) return q.reject(new Error('No target'));
+
+    return target.execute.apply (this.target, arguments);
   };
 
   return AppSideCommand;
