@@ -2,7 +2,7 @@ function createAppSuite (execlib){
   'use strict';
 
   var lib = execlib.lib,
-    environmentFactory = require('./environments/factorycreator.js')(execlib, require('./datasources')(execlib)),
+    environmentFactory = require('./environments/factorycreator.js')(execlib),
     elementFactory,
     pageFactory;
 
