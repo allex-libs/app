@@ -1,0 +1,16 @@
+{
+  "js": {
+    "lib" : [
+      "lib/index.js",
+      "lib/apploader.js"
+    ]
+  },
+  "browserify": {
+    "dist/browserified.js":"../browserify.js"
+  },
+  "exclude": {
+    "jshint": [
+      "browserified.js"
+    ]
+  }
+}

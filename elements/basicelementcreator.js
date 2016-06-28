@@ -4,39 +4,40 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
 
   var Parent = Hierarchy.Parent,
     Child = Hierarchy.Child,
-    CLDestroyable = lib.CLDestroyable,
-    Listenable = lib.Listenable;
-
-  function createElement (prnt, desc) {
-    prnt.addChild (elementFactory (desc));
-  }
+    ChangeableListenable = lib.ChangeableListenable,
+    Gettable = lib.Gettable;
 
   function BasicElement (id, options) {
     Parent.call(this);
     Child.call(this);
-    CLDestroyable.call(this);
+    ChangeableListenable.call(this);
+    Gettable.call(this);
 
     this.id = id;
     this.actual = null;
-    if (options && options.elements) {
-      options.elements.forEach (createElement.bind(null, this));
-    }
   }
   lib.inherit (BasicElement, Parent);
 
   BasicElement.prototype.__cleanUp = function () {
     this.actual = null;
     this.id = null;
-    CLDestroyable.__cleanUp.call(this);
+    Gettable.prototype.__cleanUp.call(this);
     Child.prototype.__cleanUp.call(this);
     Parent.prototype.__cleanUp.call(this);
+    ChangeableListenable.__cleanUp.call(this);
   };
 
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
-  lib.inheritMethods (BasicElement, CLDestroyable, 'get', 'set', 'fireEvent');
+  lib.inheritMethods (BasicElement, Gettable, 'get');
+  ChangeableListenable.addMethods (BasicElement);
 
-  //we need this lazy one: specify eventname and do not call immediatelly like CLDestroyable's attachListener does ...
-  BasicElement.prototype.attachListener = Listenable.prototype.attachListener;
+  BasicElement.prototype.createElements = function (elements) {
+    elements.forEach(this.createElement.bind(this));
+  };
+
+  BasicElement.prototype.createElement = function (desc) {
+    this.addChild (elementFactory(desc));
+  };
 
   function findById (id, item) {
     if (id === item.get('id')) return item;
