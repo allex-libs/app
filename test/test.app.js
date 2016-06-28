@@ -111,11 +111,15 @@ describe('Testing app', function () {
         pages : [
           {
             name : 'login',
-            elements : ['indata_login']
+            options : {
+              elements : ['indata_login']
+            }
           },
           {
             name : 'sessions',
-            elements : ['indata_session_grid']
+            options : {
+              elements : ['indata_session_grid']
+            }
           }
         ]
     });

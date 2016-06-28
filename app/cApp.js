@@ -1,10 +1,12 @@
-function createApp (execlib){
+function createApp (lib, BasicElement, Hierarchy){
   'use strict';
 
-  var lib = execlib.lib,
-    DataSource = require('./cDataSource')(lib),
+  var DataSource = require('./cDataSource')(lib),
     Command = require('./cCommand')(lib),
-    Element = require('./cElement')(lib);
+    Element = require('./cElement')(lib),
+    Page = require('./cPage')(lib, BasicElement),
+    ChangeableListenable = lib.ChangeableListenable,
+    Parent = Hierarchy.Parent;
 
   function toString (item) {
     return JSON.stringify(item, null, 2);
@@ -13,7 +15,6 @@ function createApp (execlib){
   function findByField (fieldname, val, item) {
     if (item[fieldname] === val) return item;
   }
-
 
   function linkDataSource (environments, datasources, desc, item) {
     if (!item.name) throw new Error ('Datasource has no name: '+toString(item));
@@ -49,27 +50,55 @@ function createApp (execlib){
   }
 
   function declareElements (elements, item) {
-    elements.add (item.name, new Element(item));
+
+    if (!item.name) throw new Error('Missing name for AppElement');
+    if (!item.type) throw new Error('Missing type for AppElement');
+
+    elements.add (item.name, item);
   }
 
-  function declarePages (elements, pages, item) {
+  function declarePages (app, item) {
+    if (!item) throw new Error('No item set');
+    if (!item.name) throw new Error('Page requires a name');
+    if (!item.options || !item.options.elements || !item.options.elements.length) throw new Error('Page with no elements? No way');
+    var page = new Page(item.name, item.options);
+    app.addChild(page);
+    page.createElements (item.options.elements);
   }
 
   function App(desc){
+    if (!desc) throw new Error('Missing descriptor');
+    ChangeableListenable.call(this);
+    Parent.call(this);
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
-    this.pages = new lib.Map ();
     this.elements = new lib.Map ();
+
+    this.page = null;
 
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
     lib.traverseShallow (desc.elements, declareElements.bind(null, this.elements));
-    lib.traverseShallow (desc.pages, declarePages.bind(null, this.elements, this.pages));
+    lib.traverseShallow (desc.pages, declarePages.bind(null, this));
+
+    ///STANI, nije jos gotovo ...
+
+    this.initial_page = desc.initial_page || desc.pages[0].name;
   }
+  lib.inherit(App, Parent);
+  ChangeableListenable.addMethods(App);
+
+  App.prototype.__cleanUp = function () {
+    ///TODO, big TODO ...
+  };
+
+  App.prototype.childChanged = function () {
+    //TODO: nothing for now ...
+  };
 
   App.prototype.go = function () {
-    //NEMA TU NISTA ZA SAD...
+    this.set('page', this.initial_page);
   };
 
   return App;

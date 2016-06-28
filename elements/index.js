@@ -1,8 +1,7 @@
-function createElements (lib) {
+function createElements (lib, Hierarchy) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
     BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory);
 
   function elementFactory (desc) {
@@ -13,6 +12,10 @@ function createElements (lib) {
 
     if (!ctor) throw new Error('No ctor found for element type: '+type);
     var instance = new ctor(desc.name, desc.options);
+
+    if (desc.options && desc.options.elements) { 
+      instance.createElements(desc.options.elements);
+    }
     instance.set('actual', desc.actual);
     return instance;
   }
