@@ -1,9 +1,5 @@
 {
   "js": {
-    "lib" : [
-      "lib/index.js",
-      "lib/apploader.js"
-    ]
   },
   "browserify": {
     "dist/browserified.js":"../browserify.js"
@@ -12,5 +8,9 @@
     "jshint": [
       "browserified.js"
     ]
+  },
+  "protoboard": {
+    "role":"web_component",
+    "js_doc_filters": "^(src)"
   }
 }

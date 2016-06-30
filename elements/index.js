@@ -12,10 +12,12 @@ function createElements (lib, Hierarchy) {
 
     if (!ctor) throw new Error('No ctor found for element type: '+type);
     var instance = new ctor(desc.name, desc.options);
+    /*
 
     if (desc.options && desc.options.elements) { 
       instance.createElements(desc.options.elements);
     }
+    */
     instance.set('actual', desc.actual);
     return instance;
   }

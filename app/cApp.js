@@ -1,12 +1,11 @@
-function createApp (lib, BasicElement, Hierarchy){
+function createApp (lib, BasicElement, Hierarchy, Resources){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
     Command = require('./cCommand')(lib),
-    Element = require('./cElement')(lib),
-    Page = require('./cPage')(lib, BasicElement),
     ChangeableListenable = lib.ChangeableListenable,
-    Parent = Hierarchy.Parent;
+    Parent = Hierarchy.Parent,
+    q = lib.q;
 
   function toString (item) {
     return JSON.stringify(item, null, 2);
@@ -57,16 +56,38 @@ function createApp (lib, BasicElement, Hierarchy){
     elements.add (item.name, item);
   }
 
+
+  function resolveReferences (app, desc) {
+    if (!lib.isString(desc)) return desc;
+
+    var ret = app.elements.get(desc);
+    if (!ret) throw new Error ('Expecting app to have declared page '+desc);
+    return ret;
+  }
+
   function declarePages (app, item) {
     if (!item) throw new Error('No item set');
     if (!item.name) throw new Error('Page requires a name');
     if (!item.options || !item.options.elements || !item.options.elements.length) throw new Error('Page with no elements? No way');
-    var page = new Page(item.name, item.options);
+
+    item.options.elements = item.options.elements.map (resolveReferences.bind(null, app));
+
+    //PAGE MUST EXTEND ELEMENT ....
+    var page = new app.pagector(item.name, item.options);
     app.addChild(page);
-    page.createElements (item.options.elements);
+    var ret = page.initialize();
+    ret.done (null, console.warn.bind(console, 'Failed to load page', item.name));
+    return ret;
   }
 
-  function App(desc){
+  function loadPages (app, desc) {
+    console.log('LOADING PAGES ...');
+    lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
+    q.all (desc.pages.map(declarePages.bind(null, app)))
+      .done(app._loading_defer.resolve.bind(app,true), app._loading_defer.reject.bind(app));
+  }
+
+  function App(desc, pagector){
     if (!desc) throw new Error('Missing descriptor');
     ChangeableListenable.call(this);
     Parent.call(this);
@@ -74,17 +95,28 @@ function createApp (lib, BasicElement, Hierarchy){
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
     this.elements = new lib.Map ();
+    this.pagector = pagector;
+    this._loading_defer = q.defer();
+
+    if (!lib.isFunction (pagector)) throw new Error('Expecting Page Constructor as a paramenter');
 
     this.page = null;
 
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
-    lib.traverseShallow (desc.elements, declareElements.bind(null, this.elements));
-    lib.traverseShallow (desc.pages, declarePages.bind(null, this));
 
-    ///STANI, nije jos gotovo ...
+    var initial_page = desc.initial_page || desc.pages[0].name;
+    this._loading_defer.promise.done(this.set.bind(this, 'page', initial_page), console.error.bind(console, 'failed to load app'));
 
-    this.initial_page = desc.initial_page || desc.pages[0].name;
+    if (desc.resources) {
+      this._loading_defer.notify ('RESOURCES');
+      q.all(desc.resources.map(Resources.resourceFactory.bind(Resources)))
+        .done (loadPages.bind(null, this, desc), this._loading_defer.reject.bind(this._loading_defer));
+    }
+    else{
+      this._loading_defer.notify('PAGES');
+      loadPages(this, desc);
+    }
   }
   lib.inherit(App, Parent);
   ChangeableListenable.addMethods(App);
@@ -97,8 +129,29 @@ function createApp (lib, BasicElement, Hierarchy){
     //TODO: nothing for now ...
   };
 
-  App.prototype.go = function () {
-    this.set('page', this.initial_page);
+  App.prototype.set_page = function (page) {
+    if (this.page) {
+      this.page.set('actual', false);
+    }
+    this.page = null;
+    if (!page) return;
+
+    var p = this.findById (page);
+    if (!p) throw new Error('Unable to find page '+page);
+
+    this.page = p;
+    this.page.set('actual', true);
+  };
+
+
+  ///TODO: findById is as same as elements findById
+
+  function findById (id, item) {
+    if (id === item.get('id')) return item;
+  }
+
+  App.prototype.findById = function (id) {
+    return this.__children.traverseConditionally (findById.bind(null, id));
   };
 
   return App;

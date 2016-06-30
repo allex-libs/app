@@ -5,13 +5,17 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
   var Parent = Hierarchy.Parent,
     Child = Hierarchy.Child,
     ChangeableListenable = lib.ChangeableListenable,
-    Gettable = lib.Gettable;
+    Gettable = lib.Gettable,
+    Configurable = lib.Configurable,
+    q = lib.q,
+    qlib = lib.qlib;
 
   function BasicElement (id, options) {
     Parent.call(this);
     Child.call(this);
     ChangeableListenable.call(this);
     Gettable.call(this);
+    Configurable.call(this, options);
 
     this.id = id;
     this.actual = null;
@@ -21,6 +25,8 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
   BasicElement.prototype.__cleanUp = function () {
     this.actual = null;
     this.id = null;
+
+    Configurable.prototype.__cleanUp.call(this);
     Gettable.prototype.__cleanUp.call(this);
     Child.prototype.__cleanUp.call(this);
     Parent.prototype.__cleanUp.call(this);
@@ -30,13 +36,43 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
   lib.inheritMethods (BasicElement, Gettable, 'get');
   ChangeableListenable.addMethods (BasicElement);
+  Configurable.addMethods(BasicElement);
+
+
+  function createElement (be, desc) {
+    return be.createElement.bind(be, desc);
+  }
+
+  BasicElement.prototype.initialize = function () {
+    var ret = this.doInitialize(),
+      inipromise = q.isPromise(ret) ? ret : q.resolve(true),
+      subelements = this.getConfigVal('elements');
+
+    if (!subelements || subelements.length === 0){
+      return inipromise;
+    }
+
+    ///TODO: ovo treba da proveris da li je istina ....
+    var job = new qlib.PromiseExecutorJob (subelements.map (createElement.bind(null, this))),
+      final_p  = inipromise.then(job.go.bind(job));
+
+    final_p.done(console.log.bind(console, 'ova stvar je gotova ;'), console.log.bind(console, 'ova stvar je pukla'));
+    return final_p;
+  };
+
+  BasicElement.prototype.DEFAULT_CONFIG = function () {
+    return null;
+  };
 
   BasicElement.prototype.createElements = function (elements) {
+    if (!elements) return;
     elements.forEach(this.createElement.bind(this));
   };
 
   BasicElement.prototype.createElement = function (desc) {
-    this.addChild (elementFactory(desc));
+    var el = elementFactory(desc);
+    this.addChild (el);
+    return el.initialize();
   };
 
   function findById (id, item) {
