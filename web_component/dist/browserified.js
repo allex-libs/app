@@ -1,11 +1,77 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-function createApp (lib, BasicElement, Hierarchy, Resources){
+function create (lib, Hierarchy) {
+  'use strict';
+
+  var ChangeableListenable = lib.ChangeableListenable,
+    Parent = Hierarchy.Parent;
+
+  function BasicParent () {
+    Parent.call(this);
+    ChangeableListenable.call(this);
+  }
+  lib.inherit(BasicParent, Parent);
+  ChangeableListenable.addMethods (BasicParent);
+
+  BasicParent.prototype.__cleanUp = function () {
+    ChangeableListenable.prototype.__cleanUp.call(this);
+    Parent.prototype.__cleanUp.call(this);
+  };
+
+  function findById (id, item) {
+    if (id === item.get('id')) return item;
+  }
+
+  BasicParent.prototype.findById = function (id) {
+    return this.__children.traverseConditionally (findById.bind(null, id));
+  };
+
+  function processReplacer (replacers, item, index, arr){
+    for (var i in replacers) {
+      let regexp = new RegExp ('\{'+i+'\}', 'g');
+      item = item.replace(regexp, replacers[i]);
+      regexp = null;
+      arr[index] = item;
+    }
+  }
+
+  function processReplacers (path, replacers) {
+    path.forEach(processReplacer.bind(null, replacers));
+  }
+
+  BasicParent.prototype.childAtPath = function (path, replacers) {
+    if (!path || !path.length) return null;
+
+    if (lib.isString(path)) {
+      path = path.split('.');
+    }
+
+    if (replacers) {
+      processReplacers(path, replacers);
+    }
+
+    var sp = this, 
+      cursor = 0;
+  
+    while (sp && cursor < path.length) {
+      sp = sp.findById(path[cursor]);
+      cursor++;
+    }
+
+    return sp;
+  };
+
+
+  return BasicParent;
+}
+
+module.exports = create;
+
+},{}],2:[function(require,module,exports){
+function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
     Command = require('./cCommand')(lib),
-    ChangeableListenable = lib.ChangeableListenable,
-    Parent = Hierarchy.Parent,
     q = lib.q;
 
   function toString (item) {
@@ -57,7 +123,6 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
     elements.add (item.name, item);
   }
 
-
   function resolveReferences (app, desc) {
     if (!lib.isString(desc)) return desc;
 
@@ -82,16 +147,14 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
   }
 
   function loadPages (app, desc) {
-    console.log('LOADING PAGES ...');
     lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
     q.all (desc.pages.map(declarePages.bind(null, app)))
-      .done(app._loading_defer.resolve.bind(app,true), app._loading_defer.reject.bind(app));
+      .done(app._loading_defer.resolve.bind(app._loading_defer,true), app._loading_defer.reject.bind(app));
   }
 
   function App(desc, pagector){
     if (!desc) throw new Error('Missing descriptor');
-    ChangeableListenable.call(this);
-    Parent.call(this);
+    BasicParent.call(this);
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
@@ -107,6 +170,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
 
     var initial_page = desc.initial_page || desc.pages[0].name;
+
     this._loading_defer.promise.done(this.set.bind(this, 'page', initial_page), console.error.bind(console, 'failed to load app'));
 
     if (desc.resources) {
@@ -119,8 +183,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
       loadPages(this, desc);
     }
   }
-  lib.inherit(App, Parent);
-  ChangeableListenable.addMethods(App);
+  lib.inherit(App, BasicParent);
 
   App.prototype.__cleanUp = function () {
     ///TODO, big TODO ...
@@ -144,22 +207,11 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
     this.page.set('actual', true);
   };
 
-
-  ///TODO: findById is as same as elements findById
-
-  function findById (id, item) {
-    if (id === item.get('id')) return item;
-  }
-
-  App.prototype.findById = function (id) {
-    return this.__children.traverseConditionally (findById.bind(null, id));
-  };
-
   return App;
 }
 module.exports = createApp;
 
-},{"./cCommand":2,"./cDataSource":3}],2:[function(require,module,exports){
+},{"./cCommand":3,"./cDataSource":4}],3:[function(require,module,exports){
 function createCommand (lib) {
   'use strict';
 
@@ -191,7 +243,7 @@ function createCommand (lib) {
 
 module.exports = createCommand;
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 function createDataSource (lib) {
   'use strict';
 
@@ -252,34 +304,31 @@ function createDataSource (lib) {
 
 module.exports = createDataSource;
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 ALLEX.execSuite.libRegistry.register('allex_applib',require('./index')(ALLEX));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./index":7}],5:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory) {
+},{"./index":8}],6:[function(require,module,exports){
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
 
   'use strict';
 
-  var Parent = Hierarchy.Parent,
-    Child = Hierarchy.Child,
-    ChangeableListenable = lib.ChangeableListenable,
+  var Child = Hierarchy.Child,
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib;
 
   function BasicElement (id, options) {
-    Parent.call(this);
+    BasicParent.call(this);
     Child.call(this);
-    ChangeableListenable.call(this);
     Gettable.call(this);
     Configurable.call(this, options);
 
     this.id = id;
     this.actual = null;
   }
-  lib.inherit (BasicElement, Parent);
+  lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
     this.actual = null;
@@ -288,13 +337,10 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
     Configurable.prototype.__cleanUp.call(this);
     Gettable.prototype.__cleanUp.call(this);
     Child.prototype.__cleanUp.call(this);
-    Parent.prototype.__cleanUp.call(this);
-    ChangeableListenable.__cleanUp.call(this);
   };
 
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
   lib.inheritMethods (BasicElement, Gettable, 'get');
-  ChangeableListenable.addMethods (BasicElement);
   Configurable.addMethods(BasicElement);
 
 
@@ -315,7 +361,7 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
     var job = new qlib.PromiseExecutorJob (subelements.map (createElement.bind(null, this))),
       final_p  = inipromise.then(job.go.bind(job));
 
-    final_p.done(console.log.bind(console, 'ova stvar je gotova ;'), console.log.bind(console, 'ova stvar je pukla'));
+    //final_p.done(console.log.bind(console, 'ova stvar je gotova ;'), console.log.bind(console, 'ova stvar je pukla'));
     return final_p;
   };
 
@@ -323,58 +369,12 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
     return null;
   };
 
-  BasicElement.prototype.createElements = function (elements) {
-    if (!elements) return;
-    elements.forEach(this.createElement.bind(this));
-  };
-
   BasicElement.prototype.createElement = function (desc) {
     var el = elementFactory(desc);
     this.addChild (el);
-    return el.initialize();
-  };
-
-  function findById (id, item) {
-    if (id === item.get('id')) return item;
-  }
-
-  BasicElement.prototype.findById = function (id) {
-    return this.__children.traverseConditionally (findById.bind(null, id));
-  };
-
-  function processReplacer (replacers, item, index, arr){
-    for (var i in replacers) {
-      let regexp = new RegExp ('\{'+i+'\}', 'g');
-      item = item.replace(regexp, replacers[i]);
-      regexp = null;
-      arr[index] = item;
-    }
-  }
-
-  function processReplacers (path, replacers) {
-    path.forEach(processReplacer.bind(null, replacers));
-  }
-
-  BasicElement.prototype.childAtPath = function (path, replacers) {
-    if (!path || !path.length) return null;
-
-    if (lib.isString(path)) {
-      path = path.split('.');
-    }
-
-    if (replacers) {
-      processReplacers(path, replacers);
-    }
-
-    var sp = this, 
-      cursor = 0;
-  
-    while (sp && cursor < path.length) {
-      sp = sp.findById(path[cursor]);
-      cursor++;
-    }
-
-    return sp;
+    var ret = el.initialize();
+    ret.done (el.set.bind(el, 'actual', desc.actual || false));
+    return ret;
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -383,6 +383,7 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
 
   BasicElement.prototype.childChanged = function (el, name, value) {
     if ('actual' === name && value) {
+      console.log('ACTUAL UPDATE DETECTED ...', value, el.get('id'));
       this.set('actual', true);
       return; ///this one will emmit childChanged ....
     }
@@ -394,12 +395,12 @@ function createBasicElement (lib, Hierarchy, elementFactory) {
 
 module.exports = createBasicElement;
 
-},{}],6:[function(require,module,exports){
-function createElements (lib, Hierarchy) {
+},{}],7:[function(require,module,exports){
+function createElements (lib, Hierarchy, BasicParent) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent);
 
   function elementFactory (desc) {
     //TODO: a sta sa parent-ima? who's your daddy? :D
@@ -409,13 +410,6 @@ function createElements (lib, Hierarchy) {
 
     if (!ctor) throw new Error('No ctor found for element type: '+type);
     var instance = new ctor(desc.name, desc.options);
-    /*
-
-    if (desc.options && desc.options.elements) { 
-      instance.createElements(desc.options.elements);
-    }
-    */
-    instance.set('actual', desc.actual);
     return instance;
   }
 
@@ -433,32 +427,39 @@ function createElements (lib, Hierarchy) {
 
 module.exports = createElements;
 
-},{"./basicelementcreator.js":5}],7:[function(require,module,exports){
+},{"./basicelementcreator.js":6}],8:[function(require,module,exports){
 function createLib(execlib) {
   'use strict';
   var lib = execlib.lib,
     Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
-    Elements = require('./elements')(lib, Hierarchy),
+    BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent),
     Resources = require('./resources')(lib),
-    App = require('./app/cApp')(lib, Elements.BasicElement, Hierarchy, Resources);
+    App = require('./app/cApp')(lib, Elements.BasicElement, Hierarchy, Resources, BasicParent);
 
   function createApp(desc, pagector) {
-    return new App(desc, pagector);
+    if (RESULT.App) throw new Error("You're not allowed to create more than one App");
+    var ret = new App(desc, pagector);
+    RESULT.App = ret;
+    return ret;
   }
 
-  return {
+  var RESULT = {
     createApp: createApp,
     registerElementType : Elements.registerElementType,
     BasicElement : Elements.BasicElement,
     registerResourceType : Resources.registerResourceType,
     BasicResourceLoader : Resources.BasicResourceLoader,
-    getResource : Resources.getResource
+    getResource : Resources.getResource,
+    App : null
   };
+
+  return RESULT;
 }
 
 module.exports = createLib;
 
-},{"./app/cApp":1,"./elements":6,"./resources":15,"allex_hierarchymixinslowlevellib":14}],8:[function(require,module,exports){
+},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":7,"./resources":16,"allex_hierarchymixinslowlevellib":15}],9:[function(require,module,exports){
 module.exports = function (inherit, DestroyableChild){
   'use strict';
   function Child(parnt){
@@ -476,7 +477,7 @@ module.exports = function (inherit, DestroyableChild){
   return Child;
 };
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 module.exports = function (inherit, StaticChild){
   'use strict';
 
@@ -495,7 +496,7 @@ module.exports = function (inherit, StaticChild){
   return DestroyableChild;
 };
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 module.exports = function (inherit,StaticParent) {
   'use strict';
 
@@ -518,7 +519,7 @@ module.exports = function (inherit,StaticParent) {
   return DestroyableParent;
 };
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function (inherit,DestroyableParent) {
   'use strict';
 
@@ -541,7 +542,7 @@ module.exports = function (inherit,DestroyableParent) {
   return Parent;
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = function () {
   'use strict';
   function StaticChild(parnt){
@@ -578,7 +579,7 @@ module.exports = function () {
   return StaticChild;
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 
 function traverseChild(cb, methodname,child,childindex){
   'use strict';
@@ -642,7 +643,7 @@ module.exports = function (DList,get,set) {
   return StaticParent;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 module.exports = function (inherit, DList, Gettable, Settable) {
   'use strict';
   var StaticParent = require('./StaticParent')(DList,Gettable.get,Settable.set),
@@ -660,7 +661,7 @@ module.exports = function (inherit, DList, Gettable, Settable) {
   };
 };
 
-},{"./Child.js":8,"./DestroyableChild.js":9,"./DestroyableParent.js":10,"./Parent":11,"./StaticChild.js":12,"./StaticParent":13}],15:[function(require,module,exports){
+},{"./Child.js":9,"./DestroyableChild.js":10,"./DestroyableParent.js":11,"./Parent":12,"./StaticChild.js":13,"./StaticParent":14}],16:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
@@ -695,4 +696,4 @@ function createResourcesModule (lib) {
 
 module.exports = createResourcesModule;
 
-},{}]},{},[4]);
+},{}]},{},[5]);

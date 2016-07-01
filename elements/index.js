@@ -1,8 +1,8 @@
-function createElements (lib, Hierarchy) {
+function createElements (lib, Hierarchy, BasicParent) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent);
 
   function elementFactory (desc) {
     //TODO: a sta sa parent-ima? who's your daddy? :D
@@ -12,13 +12,6 @@ function createElements (lib, Hierarchy) {
 
     if (!ctor) throw new Error('No ctor found for element type: '+type);
     var instance = new ctor(desc.name, desc.options);
-    /*
-
-    if (desc.options && desc.options.elements) { 
-      instance.createElements(desc.options.elements);
-    }
-    */
-    instance.set('actual', desc.actual);
     return instance;
   }
 

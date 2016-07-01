@@ -1,10 +1,8 @@
-function createApp (lib, BasicElement, Hierarchy, Resources){
+function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
     Command = require('./cCommand')(lib),
-    ChangeableListenable = lib.ChangeableListenable,
-    Parent = Hierarchy.Parent,
     q = lib.q;
 
   function toString (item) {
@@ -56,7 +54,6 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
     elements.add (item.name, item);
   }
 
-
   function resolveReferences (app, desc) {
     if (!lib.isString(desc)) return desc;
 
@@ -81,16 +78,14 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
   }
 
   function loadPages (app, desc) {
-    console.log('LOADING PAGES ...');
     lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
     q.all (desc.pages.map(declarePages.bind(null, app)))
-      .done(app._loading_defer.resolve.bind(app,true), app._loading_defer.reject.bind(app));
+      .done(app._loading_defer.resolve.bind(app._loading_defer,true), app._loading_defer.reject.bind(app));
   }
 
   function App(desc, pagector){
     if (!desc) throw new Error('Missing descriptor');
-    ChangeableListenable.call(this);
-    Parent.call(this);
+    BasicParent.call(this);
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
@@ -106,6 +101,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
 
     var initial_page = desc.initial_page || desc.pages[0].name;
+
     this._loading_defer.promise.done(this.set.bind(this, 'page', initial_page), console.error.bind(console, 'failed to load app'));
 
     if (desc.resources) {
@@ -118,8 +114,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
       loadPages(this, desc);
     }
   }
-  lib.inherit(App, Parent);
-  ChangeableListenable.addMethods(App);
+  lib.inherit(App, BasicParent);
 
   App.prototype.__cleanUp = function () {
     ///TODO, big TODO ...
@@ -141,17 +136,6 @@ function createApp (lib, BasicElement, Hierarchy, Resources){
 
     this.page = p;
     this.page.set('actual', true);
-  };
-
-
-  ///TODO: findById is as same as elements findById
-
-  function findById (id, item) {
-    if (id === item.get('id')) return item;
-  }
-
-  App.prototype.findById = function (id) {
-    return this.__children.traverseConditionally (findById.bind(null, id));
   };
 
   return App;
