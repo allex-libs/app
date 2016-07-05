@@ -1,7 +1,6 @@
 function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
 
   'use strict';
-
   var Child = Hierarchy.Child,
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
@@ -32,24 +31,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
   lib.inheritMethods (BasicElement, Gettable, 'get');
   Configurable.addMethods(BasicElement);
 
-
-  function createElement (be, desc) {
-    return be.createElement.bind(be, desc);
-  }
-
   BasicElement.prototype.initialize = function () {
-    var ret = this.doInitialize(),
-      inipromise = q.isPromise(ret) ? ret : q.resolve(true),
-      subelements = this.getConfigVal('elements');
-
-    if (!subelements || subelements.length === 0){
-      return inipromise;
-    }
-
-    var job = new qlib.PromiseExecutorJob (subelements.map (createElement.bind(null, this))),
-      final_p  = inipromise.then(job.go.bind(job));
-
-    return final_p;
+    //should be called right after child has been added to the parent
+    var subelements = this.getConfigVal('elements');
+    if (!subelements || subelements.length === 0){ return; }
+    subelements.forEach(this.createElement.bind(this));
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
@@ -59,9 +45,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
   BasicElement.prototype.createElement = function (desc) {
     var el = elementFactory(desc);
     this.addChild (el);
-    var ret = el.initialize();
-    ret.done (el.set.bind(el, 'actual', desc.actual || false));
-    return ret;
+    el.initialize();
+    el.set('actual', desc.actual || false);
   };
 
   BasicElement.prototype.set_actual = function (val) {

@@ -69,18 +69,16 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
 
     item.options.elements = item.options.elements.map (resolveReferences.bind(null, app));
 
-    //PAGE MUST EXTEND ELEMENT ....
     var page = new app.pagector(item.name, item.options);
     app.addChild(page);
-    var ret = page.initialize();
-    ret.done (null, console.warn.bind(console, 'Failed to load page', item.name));
-    return ret;
+    page.initialize();
   }
 
   function loadPages (app, desc) {
     lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
-    q.all (desc.pages.map(declarePages.bind(null, app)))
-      .done(app._loading_defer.resolve.bind(app._loading_defer,true), app._loading_defer.reject.bind(app));
+    desc.pages.forEach(declarePages.bind(null, app));
+    var initial_page = desc.initial_page || desc.pages[0].name;
+    app.set('page', initial_page);
   }
 
   function App(desc, pagector){
@@ -91,7 +89,6 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
     this.commands = new lib.Map();
     this.elements = new lib.Map ();
     this.pagector = pagector;
-    this._loading_defer = q.defer();
 
     if (!lib.isFunction (pagector)) throw new Error('Expecting Page Constructor as a paramenter');
 
@@ -100,17 +97,13 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
 
-    var initial_page = desc.initial_page || desc.pages[0].name;
 
-    this._loading_defer.promise.done(this.set.bind(this, 'page', initial_page), console.error.bind(console, 'failed to load app'));
-
+    ///TODO: what should we do while loading common resources?
     if (desc.resources) {
-      this._loading_defer.notify ('RESOURCES');
       q.all(desc.resources.map(Resources.resourceFactory.bind(Resources)))
-        .done (loadPages.bind(null, this, desc), this._loading_defer.reject.bind(this._loading_defer));
+        .done (loadPages.bind(null, this, desc));
     }
     else{
-      this._loading_defer.notify('PAGES');
       loadPages(this, desc);
     }
   }

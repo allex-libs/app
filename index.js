@@ -21,6 +21,7 @@ function createLib(execlib) {
     registerResourceType : Resources.registerResourceType,
     BasicResourceLoader : Resources.BasicResourceLoader,
     getResource : Resources.getResource,
+    resourceFactory: Resources.resourceFactory,
     App : null
   };
 
