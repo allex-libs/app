@@ -77,7 +77,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
   function loadPages (app, desc) {
     lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
     desc.pages.forEach(declarePages.bind(null, app));
-    var initial_page = desc.initial_page || desc.pages[0].name;
+    var initial_page = desc.initial_page || (desc.pages.length ? desc.pages[0].name : null);
     app.set('page', initial_page);
   }
 

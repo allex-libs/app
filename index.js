@@ -22,6 +22,7 @@ function createLib(execlib) {
     BasicResourceLoader : Resources.BasicResourceLoader,
     getResource : Resources.getResource,
     resourceFactory: Resources.resourceFactory,
+    traverseResources : Resources.traverseResources,
     App : null
   };
 

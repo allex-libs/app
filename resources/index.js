@@ -6,9 +6,10 @@ function createResourcesModule (lib) {
   function resourceFactory (desc) {
     var ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+name));
-    var instance = new ctor(desc.options)
-    ResourceRegistry.add (desc.name, instance);
-    return instance.load();
+    var instance = new ctor(desc.options);
+    var promise = instance.load();
+    ResourceRegistry.add (desc.name, {instance: instance, promise : promise});
+    return promise;
   }
   function BasicResourceLoader (options) {
     lib.Configurable.call(this, options);
@@ -22,11 +23,17 @@ function createResourcesModule (lib) {
     throw new Error('not implementsd');
   };
 
+  function getResource (name) {
+    var c = ResourceRegistry.get(name);
+    return c ? c.instance : null;
+  }
+
   return {
     registerResourceType : ResourceTypeRegistry.add.bind(ResourceTypeRegistry),
     resourceFactory : resourceFactory,
-    getResource : ResourceRegistry.get.bind(ResourceRegistry),
-    BasicResourceLoader : BasicResourceLoader
+    getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    BasicResourceLoader : BasicResourceLoader,
+    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry)
   }
 }
 

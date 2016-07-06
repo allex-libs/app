@@ -26,8 +26,9 @@ function create (lib, Hierarchy) {
   };
 
   function processReplacer (replacers, item, index, arr){
+    var regexp;
     for (var i in replacers) {
-      let regexp = new RegExp ('\{'+i+'\}', 'g');
+      regexp = new RegExp ('\{'+i+'\}', 'g');
       item = item.replace(regexp, replacers[i]);
       regexp = null;
       arr[index] = item;
@@ -146,7 +147,7 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
   function loadPages (app, desc) {
     lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
     desc.pages.forEach(declarePages.bind(null, app));
-    var initial_page = desc.initial_page || desc.pages[0].name;
+    var initial_page = desc.initial_page || (desc.pages.length ? desc.pages[0].name : null);
     app.set('page', initial_page);
   }
 
@@ -427,6 +428,7 @@ function createLib(execlib) {
     BasicResourceLoader : Resources.BasicResourceLoader,
     getResource : Resources.getResource,
     resourceFactory: Resources.resourceFactory,
+    traverseResources : Resources.traverseResources,
     App : null
   };
 
@@ -646,9 +648,10 @@ function createResourcesModule (lib) {
   function resourceFactory (desc) {
     var ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+name));
-    var instance = new ctor(desc.options)
-    ResourceRegistry.add (desc.name, instance);
-    return instance.load();
+    var instance = new ctor(desc.options);
+    var promise = instance.load();
+    ResourceRegistry.add (desc.name, {instance: instance, promise : promise});
+    return promise;
   }
   function BasicResourceLoader (options) {
     lib.Configurable.call(this, options);
@@ -662,11 +665,17 @@ function createResourcesModule (lib) {
     throw new Error('not implementsd');
   };
 
+  function getResource (name) {
+    var c = ResourceRegistry.get(name);
+    return c ? c.instance : null;
+  }
+
   return {
     registerResourceType : ResourceTypeRegistry.add.bind(ResourceTypeRegistry),
     resourceFactory : resourceFactory,
-    getResource : ResourceRegistry.get.bind(ResourceRegistry),
-    BasicResourceLoader : BasicResourceLoader
+    getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    BasicResourceLoader : BasicResourceLoader,
+    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry)
   }
 }
 

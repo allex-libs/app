@@ -25,8 +25,9 @@ function create (lib, Hierarchy) {
   };
 
   function processReplacer (replacers, item, index, arr){
+    var regexp;
     for (var i in replacers) {
-      let regexp = new RegExp ('\{'+i+'\}', 'g');
+      regexp = new RegExp ('\{'+i+'\}', 'g');
       item = item.replace(regexp, replacers[i]);
       regexp = null;
       arr[index] = item;
