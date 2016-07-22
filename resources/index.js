@@ -3,10 +3,10 @@ function createResourcesModule (lib) {
     ResourceTypeRegistry = new lib.Map (),
     ResourceRegistry = new lib.Map ();
 
-  function resourceFactory (desc) {
+  function resourceFactory (app, desc) {
     var ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+name));
-    var instance = new ctor(desc.options);
+    var instance = new ctor(desc.options, app);
     var promise = instance.load();
     ResourceRegistry.add (desc.name, {instance: instance, promise : promise});
     return promise;

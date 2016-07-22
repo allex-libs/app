@@ -3,9 +3,10 @@ function createLib(execlib) {
   var lib = execlib.lib,
     Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
-    Elements = require('./elements')(lib, Hierarchy, BasicParent),
+    Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker),
     Resources = require('./resources')(lib),
-    App = require('./app/cApp')(lib, Elements.BasicElement, Hierarchy, Resources, BasicParent);
+    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");

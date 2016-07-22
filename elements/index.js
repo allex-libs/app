@@ -1,11 +1,10 @@
-function createElements (lib, Hierarchy, BasicParent) {
+function createElements (lib, Hierarchy, BasicParent, Linker) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker);
 
   function elementFactory (desc) {
-    //TODO: a sta sa parent-ima? who's your daddy? :D
     var type = desc.type;
     if (!type) throw new Error('No type in element descriptor');
     var ctor = ElementTypeRegistry.get(type);

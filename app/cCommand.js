@@ -21,7 +21,7 @@ function createCommand (lib) {
     var target = this.environment.commands.get(this.command);
     if (!target) return q.reject(new Error('No target'));
 
-    return target.execute.apply (this.target, arguments);
+    return target.execute.apply (target, arguments);
   };
 
   return AppSideCommand;

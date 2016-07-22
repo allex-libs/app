@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -15,10 +15,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
 
     this.id = id;
     this.actual = null;
+    this._link = null;
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    if (this._link) this._link.destroy();
+
     this.actual = null;
     this.id = null;
 
@@ -32,7 +35,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
   Configurable.addMethods(BasicElement);
 
   BasicElement.prototype.initialize = function () {
-    //should be called right after child has been added to the parent
     var subelements = this.getConfigVal('elements');
     if (!subelements || subelements.length === 0){ return; }
     subelements.forEach(this.createElement.bind(this));
@@ -46,11 +48,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
     var el = elementFactory(desc);
     this.addChild (el);
     el.initialize();
+    el._link = new Linker.LinkingEnvironment(el);
+    el._link.produceLinks(desc.links);
+    el._link.produceLogic(desc.logic);
     el.set('actual', desc.actual || false);
   };
 
   BasicElement.prototype.set_actual = function (val) {
+    if (this.actual === val) return false;
     this.actual = val;
+    return true;
   };
 
   BasicElement.prototype.childChanged = function (el, name, value) {
@@ -60,6 +67,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
     }
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
+
+  BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
+  BasicElement.prototype.addAppLink = lib.dummyFunc;
 
   return BasicElement;
 }

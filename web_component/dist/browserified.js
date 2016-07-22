@@ -68,7 +68,7 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
+function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
@@ -96,6 +96,9 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
 
     var ds = new DataSource(source_name);
     datasources.add(item.name, ds);
+    if ('should_running' in item) {
+      ds.set('should_running', item.should_running);
+    }
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 
@@ -116,90 +119,105 @@ function createApp (lib, BasicElement, Hierarchy, Resources, BasicParent){
     commands.add(item.command, ci);
   }
 
-  function declareElements (elements, item) {
+  function createElement (app, desc) {
+    var el = Elements.elementFactory(desc, Linker);
+    app.elements.add(el.get('id'), el);
+    el.initialize();
+    el.set('actual', desc.actual || false);
+    el._link = new Linker.LinkingEnvironment(el);
+    el._link.produceLinks(desc.links);
+    el._link.produceLogic(desc.logic);
+  };
 
-    if (!item.name) throw new Error('Missing name for AppElement');
-    if (!item.type) throw new Error('Missing type for AppElement');
-
-    elements.add (item.name, item);
+  function loadElements (app, desc) {
+    if (desc.elements) {
+      desc.elements.forEach (createElement.bind(null, app));
+    }
+    EnvironmentFactoryPromise.done (app._link.produceLinks.bind(app._link, desc.links));
+    EnvironmentFactoryPromise.done (app._link.produceLogic.bind(app._link, desc.logic));
+    app._app_ready_defer.resolve('ok');
   }
 
-  function resolveReferences (app, desc) {
-    if (!lib.isString(desc)) return desc;
-
-    var ret = app.elements.get(desc);
-    if (!ret) throw new Error ('Expecting app to have declared page '+desc);
-    return ret;
+  function createEnvironment (environments, factory, desc) {
+    var env = factory(desc);
+    environments.add(desc.name, env);
   }
 
-  function declarePages (app, item) {
-    if (!item) throw new Error('No item set');
-    if (!item.name) throw new Error('Page requires a name');
-    if (!item.options || !item.options.elements || !item.options.elements.length) throw new Error('Page with no elements? No way');
-
-    item.options.elements = item.options.elements.map (resolveReferences.bind(null, app));
-
-    var page = new app.pagector(item.name, item.options);
-    app.addChild(page);
-    page.initialize();
+  function loadEnvironments (environments, desc, factory) {
+    lib.traverseShallow(desc, createEnvironment.bind(null, environments, factory));
   }
 
-  function loadPages (app, desc) {
-    lib.traverseShallow (desc.elements, declareElements.bind(null, app.elements));
-    desc.pages.forEach(declarePages.bind(null, app));
-    var initial_page = desc.initial_page || (desc.pages.length ? desc.pages[0].name : null);
-    app.set('page', initial_page);
-  }
-
-  function App(desc, pagector){
+  function App(desc){
     if (!desc) throw new Error('Missing descriptor');
-    BasicParent.call(this);
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
     this.elements = new lib.Map ();
-    this.pagector = pagector;
+    this._link = new Linker.LinkingEnvironment(this);
 
-    if (!lib.isFunction (pagector)) throw new Error('Expecting Page Constructor as a paramenter');
-
-    this.page = null;
+    this._app_ready_defer = lib.q.defer();
 
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
 
+    EnvironmentFactoryPromise.done(loadEnvironments.bind(null, this.environments, desc.environments));
+
 
     ///TODO: what should we do while loading common resources?
     if (desc.resources) {
-      q.all(desc.resources.map(Resources.resourceFactory.bind(Resources)))
-        .done (loadPages.bind(null, this, desc));
+      q.all(desc.resources.map(Resources.resourceFactory.bind(Resources, this)))
+        .done (loadElements.bind(null, this, desc));
     }
     else{
-      loadPages(this, desc);
+      loadElements(this, desc);
     }
   }
-  lib.inherit(App, BasicParent);
 
-  App.prototype.__cleanUp = function () {
+  App.prototype.destroy = function () {
     ///TODO, big TODO ...
+  };
+
+  App.prototype.ready = function (cb) {
+    if (!lib.isFunction (cb)) return;
+    this._app_ready_defer.promise.done(cb);
+  };
+
+  App.prototype.getReadyPromise = function () {
+    return this._app_ready_defer.promise;
   };
 
   App.prototype.childChanged = function () {
     //TODO: nothing for now ...
   };
 
-  App.prototype.set_page = function (page) {
-    if (this.page) {
-      this.page.set('actual', false);
+  App.prototype.getElement = function (string) {
+    if (string === '.') return this;
+    var splitted = string.split('.'),
+      entity_type = splitted.shift(),
+      entity_name = splitted.shift(),
+      entity = null;
+
+    string = splitted.join('.');
+
+    switch (entity_type) {
+      case 'element' : entity = this.elements.get(entity_name); break;
+      case 'environment': entity = this.environments.get(entity_name); break;
+      case 'datasource' : entity = this.datasources.get(entity_name); break;
+      case 'command' : entity = this.commands.get(entity_name); break;
+      default : throw new Error('Entity type '+entity_type+' not recognized');
     }
-    this.page = null;
-    if (!page) return;
 
-    var p = this.findById (page);
-    if (!p) throw new Error('Unable to find page '+page);
-
-    this.page = p;
-    this.page.set('actual', true);
+    return (splitted.length) ? entity.getElement(string) : entity;
   };
+
+  App.prototype.getMethodByName = function (commandname) {
+    var c = this.commands.get(commandname);
+    if (c) {
+      return c.execute.bind(c);
+    }
+  };
+
+  App.prototype.addAppLink = lib.dummyFunc;
 
   return App;
 }
@@ -229,7 +247,7 @@ function createCommand (lib) {
     var target = this.environment.commands.get(this.command);
     if (!target) return q.reject(new Error('No target'));
 
-    return target.execute.apply (this.target, arguments);
+    return target.execute.apply (target, arguments);
   };
 
   return AppSideCommand;
@@ -245,15 +263,18 @@ function createDataSource (lib) {
 
   function AppSideDataSource (source_name) {
     CLDestroyable.call(this);
-    this.should_running = false;
+    this.should_running = true;
     this.running = false;
     this.source_name = source_name;
     this.data = null;
     this.environment = null;
+    this._esl = null;
   }
 
   lib.inherit (AppSideDataSource, CLDestroyable);
   AppSideDataSource.prototype.__cleanUp = function () {
+    if (this._esl) this._esl.destroy();
+    this._esl = null;
     this.should_running = null;
     this.running = null;
     this.environment = null;
@@ -262,35 +283,66 @@ function createDataSource (lib) {
     CLDestroyable.prototype.__cleanUp.call(this);
   };
 
-
-  AppSideDataSource.prototype.set_environment = function (val) {
-    var should_running = this.should_running;
-    if (this.environment) {
+  //TODO: ovde sad treba jos da se radi ... kad se env ukaci, prevezi data source - ove ...
+  AppSideDataSource.prototype._processShouldRunning  = function () {
+    if (this.should_running) {
+      this.start()
+    }else{
       this.stop();
     }
-    this.should_running = should_running;
-    this.environment = val;
+  };
 
-    if (!this.environment) return;
-    if (this.should_running) {
-      this.start();
-    }
+  AppSideDataSource.prototype.set_should_running = function (val) {
+    if (val === this.should_running) return false;
+    this._processShouldRunning(val);
+    return true;
+  };
+
+  AppSideDataSource.prototype.set_data = function (val) {
+    if (this.data === val) return false;
+    this.data = val;
+    return true;
+  };
+
+
+  AppSideDataSource.prototype.set_environment = function (val) {
+    if (this.environment === val) return false;
+    if (this._esl) this._esl.destroy();
+    this._esl = null;
+    this._unbindDS();
+    this.environment = val;
+    if (!val) return true; //nothing to be done ...
+
+    this._esl = this.environment.attachListener ('state', this._onEnvStateChanged.bind(this));
+    this._onEnvStateChanged(this.environment.state);
+    return true;
+  };
+
+  AppSideDataSource.prototype._onEnvStateChanged = function (state) {
+    if (!this.environment.isEstablished()) return this._unbindDS();
+    this._processShouldRunning();
+  };
+
+  AppSideDataSource.prototype._bindToDS = function () {
+    if (!this.environment || !this.environment.isEstablished()) return;
+    this.environment.dataSources.get(this.source_name).setTarget(this);
+    this.set('running', true);
+  };
+
+  AppSideDataSource.prototype._unbindDS = function () {
+    if (!this.environment || !this.environment.isEstablished()) return;
+    this.environment.dataSources.get(this.source_name).setTarget(null);
+    this.set('running', false);
   };
 
   AppSideDataSource.prototype.stop = function () {
     this.should_running = false;
-    if (this.environment) {
-      this.environment.stopDataSource(this.source_name, this);
-      this.set('running', false);
-    }
+    this._unbindDS();
   };
 
   AppSideDataSource.prototype.start = function () {
     this.should_running = true;
-    if (this.environment) {
-      this.environment.startDataSource(this.source_name, this);
-      this.set('running', true);
-    }
+    this._bindToDS();
   };
 
   return AppSideDataSource;
@@ -303,7 +355,7 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./index')(ALLEX));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
 },{"./index":8}],6:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -320,10 +372,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
 
     this.id = id;
     this.actual = null;
+    this._link = null;
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    if (this._link) this._link.destroy();
+
     this.actual = null;
     this.id = null;
 
@@ -337,7 +392,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
   Configurable.addMethods(BasicElement);
 
   BasicElement.prototype.initialize = function () {
-    //should be called right after child has been added to the parent
     var subelements = this.getConfigVal('elements');
     if (!subelements || subelements.length === 0){ return; }
     subelements.forEach(this.createElement.bind(this));
@@ -351,11 +405,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
     var el = elementFactory(desc);
     this.addChild (el);
     el.initialize();
+    el._link = new Linker.LinkingEnvironment(el);
+    el._link.produceLinks(desc.links);
+    el._link.produceLogic(desc.logic);
     el.set('actual', desc.actual || false);
   };
 
   BasicElement.prototype.set_actual = function (val) {
+    if (this.actual === val) return false;
     this.actual = val;
+    return true;
   };
 
   BasicElement.prototype.childChanged = function (el, name, value) {
@@ -366,20 +425,22 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent) {
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
 
+  BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
+  BasicElement.prototype.addAppLink = lib.dummyFunc;
+
   return BasicElement;
 }
 
 module.exports = createBasicElement;
 
 },{}],7:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent) {
+function createElements (lib, Hierarchy, BasicParent, Linker) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker);
 
   function elementFactory (desc) {
-    //TODO: a sta sa parent-ima? who's your daddy? :D
     var type = desc.type;
     if (!type) throw new Error('No type in element descriptor');
     var ctor = ElementTypeRegistry.get(type);
@@ -409,9 +470,10 @@ function createLib(execlib) {
   var lib = execlib.lib,
     Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
-    Elements = require('./elements')(lib, Hierarchy, BasicParent),
+    Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker),
     Resources = require('./resources')(lib),
-    App = require('./app/cApp')(lib, Elements.BasicElement, Hierarchy, Resources, BasicParent);
+    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");
@@ -645,10 +707,10 @@ function createResourcesModule (lib) {
     ResourceTypeRegistry = new lib.Map (),
     ResourceRegistry = new lib.Map ();
 
-  function resourceFactory (desc) {
+  function resourceFactory (app, desc) {
     var ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+name));
-    var instance = new ctor(desc.options);
+    var instance = new ctor(desc.options, app);
     var promise = instance.load();
     ResourceRegistry.add (desc.name, {instance: instance, promise : promise});
     return promise;
