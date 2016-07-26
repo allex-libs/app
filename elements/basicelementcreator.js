@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -16,10 +16,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.id = id;
     this.actual = null;
     this._link = null;
+    this.resources = null;
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    if (this.resources) {
+      this.resources.destroy();
+    }
+    this.resources = null;
     if (this._link) this._link.destroy();
 
     this.actual = null;
@@ -45,13 +50,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.createElement = function (desc) {
-    var el = elementFactory(desc);
-    this.addChild (el);
-    el.initialize();
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links);
-    el._link.produceLogic(desc.logic);
-    el.set('actual', desc.actual || false);
+    BasicElement.createElement(desc, this.addChild.bind(this));
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -70,6 +69,39 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   BasicElement.prototype.addAppLink = lib.dummyFunc;
+
+  BasicElement.prototype.getResource = function (name) {
+    return this.resources ? this.resources.get(name) : null;
+  };
+
+  BasicElement.createElement = function (desc, after_ctor) {
+    var el = elementFactory(desc);
+    after_ctor(el);
+    prepareResources(el, desc.requires);
+    el.initialize();
+    el._link = new Linker.LinkingEnvironment(el);
+    el._link.produceLinks(desc.links);
+    el._link.produceLogic(desc.logic);
+    el.set('actual', desc.actual || false);
+  }
+
+  function prepareResources (el, requires) {
+    if (!requires || !requires.length || !lib.isArray(requires)) return;
+    el.resources = new lib.Map();
+    requires.forEach (prepareResource.bind(null, el));
+  };
+
+  function prepareResource (el, resource) {
+    var resid, resalias;
+    if (lib.isString(resource)) {
+      resid = resource;
+      resalias = resource;
+    }else{
+      resid = resource.resource;
+      resalias = resource.alias;
+    }
+    el.resources.add(resalias, Resources.getResource(resid));
+  }
 
   return BasicElement;
 }

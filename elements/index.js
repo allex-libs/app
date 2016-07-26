@@ -1,8 +1,8 @@
-function createElements (lib, Hierarchy, BasicParent, Linker) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources);
 
   function elementFactory (desc) {
     var type = desc.type;

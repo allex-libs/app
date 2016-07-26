@@ -1,4 +1,4 @@
-function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker){
+function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
@@ -49,14 +49,12 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
     commands.add(item.command, ci);
   }
 
-  function createElement (app, desc) {
-    var el = Elements.elementFactory(desc, Linker);
+  function addElement (app, el) {
     app.elements.add(el.get('id'), el);
-    el.initialize();
-    el.set('actual', desc.actual || false);
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links);
-    el._link.produceLogic(desc.logic);
+  }
+
+  function createElement (app, desc) {
+    BasicElement.createElement (desc, addElement.bind(null, app));
   };
 
   function loadElements (app, desc) {

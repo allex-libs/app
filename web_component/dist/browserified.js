@@ -68,7 +68,7 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker){
+function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib),
@@ -119,14 +119,12 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
     commands.add(item.command, ci);
   }
 
-  function createElement (app, desc) {
-    var el = Elements.elementFactory(desc, Linker);
+  function addElement (app, el) {
     app.elements.add(el.get('id'), el);
-    el.initialize();
-    el.set('actual', desc.actual || false);
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links);
-    el._link.produceLogic(desc.logic);
+  }
+
+  function createElement (app, desc) {
+    BasicElement.createElement (desc, addElement.bind(null, app));
   };
 
   function loadElements (app, desc) {
@@ -355,7 +353,7 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./index')(ALLEX));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
 },{"./index":8}],6:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -373,10 +371,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.id = id;
     this.actual = null;
     this._link = null;
+    this.resources = null;
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    if (this.resources) {
+      this.resources.destroy();
+    }
+    this.resources = null;
     if (this._link) this._link.destroy();
 
     this.actual = null;
@@ -402,13 +405,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.createElement = function (desc) {
-    var el = elementFactory(desc);
-    this.addChild (el);
-    el.initialize();
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links);
-    el._link.produceLogic(desc.logic);
-    el.set('actual', desc.actual || false);
+    BasicElement.createElement(desc, this.addChild.bind(this));
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -428,17 +425,50 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   BasicElement.prototype.addAppLink = lib.dummyFunc;
 
+  BasicElement.prototype.getResource = function (name) {
+    return this.resources ? this.resources.get(name) : null;
+  };
+
+  BasicElement.createElement = function (desc, after_ctor) {
+    var el = elementFactory(desc);
+    after_ctor(el);
+    prepareResources(el, desc.requires);
+    el.initialize();
+    el._link = new Linker.LinkingEnvironment(el);
+    el._link.produceLinks(desc.links);
+    el._link.produceLogic(desc.logic);
+    el.set('actual', desc.actual || false);
+  }
+
+  function prepareResources (el, requires) {
+    if (!requires || !requires.length || !lib.isArray(requires)) return;
+    el.resources = new lib.Map();
+    requires.forEach (prepareResource.bind(null, el));
+  };
+
+  function prepareResource (el, resource) {
+    var resid, resalias;
+    if (lib.isString(resource)) {
+      resid = resource;
+      resalias = resource;
+    }else{
+      resid = resource.resource;
+      resalias = resource.alias;
+    }
+    el.resources.add(resalias, Resources.getResource(resid));
+  }
+
   return BasicElement;
 }
 
 module.exports = createBasicElement;
 
 },{}],7:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent, Linker) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources);
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -471,9 +501,9 @@ function createLib(execlib) {
     Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
-    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker),
     Resources = require('./resources')(lib),
-    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker);
+    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources),
+    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");
