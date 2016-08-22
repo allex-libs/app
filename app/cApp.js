@@ -29,6 +29,9 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
     if ('should_running' in item) {
       ds.set('should_running', item.should_running);
     }
+    if ('filter' in item) {
+      ds.set('filter', item.filter);
+    }
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 

@@ -11,12 +11,14 @@ function createDataSource (lib) {
     this.data = null;
     this.environment = null;
     this._esl = null;
+    this.filter = null;
   }
 
   lib.inherit (AppSideDataSource, CLDestroyable);
   AppSideDataSource.prototype.__cleanUp = function () {
     if (this._esl) this._esl.destroy();
     this._esl = null;
+    this.filter = null;
     this.should_running = null;
     this.running = null;
     this.environment = null;
@@ -46,7 +48,6 @@ function createDataSource (lib) {
     return true;
   };
 
-
   AppSideDataSource.prototype.set_environment = function (val) {
     if (this.environment === val) return false;
     if (this._esl) this._esl.destroy();
@@ -67,7 +68,9 @@ function createDataSource (lib) {
 
   AppSideDataSource.prototype._bindToDS = function () {
     if (!this.environment || !this.environment.isEstablished()) return;
-    this.environment.dataSources.get(this.source_name).setTarget(this);
+    var ds = this.environment.dataSources.get(this.source_name);
+    ds.setFilter(this.filter);
+    ds.setTarget(this);
     this.set('running', true);
   };
 
@@ -85,6 +88,14 @@ function createDataSource (lib) {
   AppSideDataSource.prototype.start = function () {
     this.should_running = true;
     this._bindToDS();
+  };
+
+  AppSideDataSource.prototype.set_filter = function (filter) {
+    this.filter = filter;
+    if (this.should_running && this.environment) {
+      var ds = this.environment.dataSources.get(this.source_name);
+      if (ds) ds.setFilter(this.filter);
+    }
   };
 
   return AppSideDataSource;
