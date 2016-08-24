@@ -2,7 +2,8 @@ function create (lib, Hierarchy) {
   'use strict';
 
   var ChangeableListenable = lib.ChangeableListenable,
-    Parent = Hierarchy.Parent;
+    Parent = Hierarchy.Parent,
+    Listenable = lib.Listenable;
 
   function BasicParent () {
     Parent.call(this);
@@ -15,6 +16,17 @@ function create (lib, Hierarchy) {
     ChangeableListenable.prototype.__cleanUp.call(this);
     Parent.prototype.__cleanUp.call(this);
   };
+  BasicParent.prototype.attachListener = function (evntname, cborpropname, cb){
+    var ret = Listenable.prototype.attachListener.call(this, evntname, cborpropname, cb);
+    if ('changed' === evntname && lib.isString(cborpropname)) {
+      lib.runNext (fireOnAttach.bind(null, this, cborpropname, cb));
+    }
+    return ret;
+  };
+
+  function fireOnAttach (self, propname, cb) {
+    cb(propname, self.get(propname));
+  }
 
   function findById (id, item) {
     if (id === item.get('id')) return item;
