@@ -6,7 +6,7 @@ function createLib(execlib) {
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources),
-    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
+    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");

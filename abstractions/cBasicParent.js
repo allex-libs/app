@@ -25,7 +25,7 @@ function create (lib, Hierarchy) {
   };
 
   function fireOnAttach (self, propname, cb) {
-    cb(propname, self.get(propname));
+    cb(self.get(propname));
   }
 
   function findById (id, item) {

@@ -1,8 +1,9 @@
-function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
   'use strict';
 
-  var DataSource = require('./cDataSource')(lib),
+  var DataSource = require('./cDataSource')(lib, dataSuite),
     Command = require('./cCommand')(lib),
+    FunctionCommand = require('./cFunctionCommand')(lib),
     q = lib.q;
 
   function toString (item) {
@@ -37,19 +38,26 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
 
 
   function linkCommand (commands, environments, desc, item) {
+    var fc = null;
     if (!item.command) throw new Error('No command in '+toString(item));
-    if (!item.environment) throw new Error('No environment in '+toString(item));
+    if (lib.isFunction(item.handler)){
+      fc = new FunctionCommand(item.command, item.handler);
+    }else{
+      if (!item.environment) throw new Error('No environment in '+toString(item));
+      var e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
+      if (!e && !lib.isFunction(item.handler)) throw new Error('Unable to find environment '+item.environment);
 
-    var e = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
-    if (!e) throw new Error('Unable to find environment '+item.environment);
+      if (!e && lib.isFunction (item.handler)) {
+      }
 
-    var c_name = item.ecommand || item.command, 
-      c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
+      var c_name = item.ecommand || item.command, 
+        c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
 
-    if (!c) throw new Error('Unable to find command in environment descriptor');
-    var ci = new Command (c_name);
-    environments.listenFor (item.environment, ci.set.bind(ci, 'environment'));
-    commands.add(item.command, ci);
+      if (!c) throw new Error('Unable to find command in environment descriptor');
+      fc = new Command (c_name);
+      environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
+    }
+    commands.add(item.command, fc);
   }
 
   function addElement (app, el) {

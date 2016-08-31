@@ -26,7 +26,7 @@ function create (lib, Hierarchy) {
   };
 
   function fireOnAttach (self, propname, cb) {
-    cb(propname, self.get(propname));
+    cb(self.get(propname));
   }
 
   function findById (id, item) {
@@ -80,11 +80,12 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
   'use strict';
 
-  var DataSource = require('./cDataSource')(lib),
+  var DataSource = require('./cDataSource')(lib, dataSuite),
     Command = require('./cCommand')(lib),
+    FunctionCommand = require('./cFunctionCommand')(lib),
     q = lib.q;
 
   function toString (item) {
@@ -119,19 +120,26 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
 
 
   function linkCommand (commands, environments, desc, item) {
+    var fc = null;
     if (!item.command) throw new Error('No command in '+toString(item));
-    if (!item.environment) throw new Error('No environment in '+toString(item));
+    if (lib.isFunction(item.handler)){
+      fc = new FunctionCommand(item.command, item.handler);
+    }else{
+      if (!item.environment) throw new Error('No environment in '+toString(item));
+      var e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
+      if (!e && !lib.isFunction(item.handler)) throw new Error('Unable to find environment '+item.environment);
 
-    var e = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
-    if (!e) throw new Error('Unable to find environment '+item.environment);
+      if (!e && lib.isFunction (item.handler)) {
+      }
 
-    var c_name = item.ecommand || item.command, 
-      c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
+      var c_name = item.ecommand || item.command, 
+        c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
 
-    if (!c) throw new Error('Unable to find command in environment descriptor');
-    var ci = new Command (c_name);
-    environments.listenFor (item.environment, ci.set.bind(ci, 'environment'));
-    commands.add(item.command, ci);
+      if (!c) throw new Error('Unable to find command in environment descriptor');
+      fc = new Command (c_name);
+      environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
+    }
+    commands.add(item.command, fc);
   }
 
   function addElement (app, el) {
@@ -236,11 +244,12 @@ function createApp (lib, Elements, Hierarchy, Resources, BasicParent, Environmen
 }
 module.exports = createApp;
 
-},{"./cCommand":3,"./cDataSource":4}],3:[function(require,module,exports){
+},{"./cCommand":3,"./cDataSource":4,"./cFunctionCommand":5}],3:[function(require,module,exports){
 function createCommand (lib) {
   'use strict';
 
-  var Settable = lib.Settable;
+  var Settable = lib.Settable,
+    q = lib.q;
 
   function AppSideCommand (command) {
     this.environment = null;
@@ -269,7 +278,7 @@ function createCommand (lib) {
 module.exports = createCommand;
 
 },{}],4:[function(require,module,exports){
-function createDataSource (lib) {
+function createDataSource (lib, dataSuite) {
   'use strict';
 
   var CLDestroyable = lib.CLDestroyable;
@@ -369,16 +378,63 @@ function createDataSource (lib) {
     }
   };
 
+  AppSideDataSource.prototype.filterData = function (fd) {
+    var filter = ALLEX.dataSuite.filterFactory.createFromDescriptor(fd);
+    var ret = null, data = this.get('data');
+    if (lib.isArray(data)) {
+      ret = lib.arryOperations.findToMatchFilter(data, fd);
+    }
+    filter.destroy();
+    filter = null;
+    return ret;
+  };
+
+  AppSideDataSource.prototype.findFirst = function (fd) {
+    var filter = dataSuite.filterFactory.createFromDescriptor(fd);
+    var ret = null, data = this.get('data');
+
+    if (lib.isArray(data)) {
+      ret = lib.arryOperations.findFirstToMatchFilter(data, fd);
+    }
+
+    filter.destroy();
+    filter = null;
+    return ret;
+  };
+
   return AppSideDataSource;
 }
 
 module.exports = createDataSource;
 
 },{}],5:[function(require,module,exports){
+function createCommand (lib) {
+  'use strict';
+
+  function FunctionCommand (command, f){
+    this.f = f;
+    this.command = command;
+  }
+
+  FunctionCommand.prototype.destroy = function () {
+    this.f = null;
+    this.command = null;
+  };
+
+  FunctionCommand.prototype.execute = function () {
+    this.f.apply(null, arguments);
+  };
+
+  return FunctionCommand;
+}
+
+module.exports = createCommand;
+
+},{}],6:[function(require,module,exports){
 ALLEX.execSuite.libRegistry.register('allex_applib',require('./index')(ALLEX));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./index":8}],6:[function(require,module,exports){
+},{"./index":9}],7:[function(require,module,exports){
 function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources) {
 
   'use strict';
@@ -489,7 +545,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
 module.exports = createBasicElement;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 function createElements (lib, Hierarchy, BasicParent, Linker, Resources) {
   'use strict';
 
@@ -520,7 +576,7 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources) {
 
 module.exports = createElements;
 
-},{"./basicelementcreator.js":6}],8:[function(require,module,exports){
+},{"./basicelementcreator.js":7}],9:[function(require,module,exports){
 function createLib(execlib) {
   'use strict';
   var lib = execlib.lib,
@@ -529,7 +585,7 @@ function createLib(execlib) {
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources),
-    App = require('./app/cApp')(lib, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
+    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");
@@ -555,7 +611,7 @@ function createLib(execlib) {
 
 module.exports = createLib;
 
-},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":7,"./resources":16,"allex_hierarchymixinslowlevellib":15}],9:[function(require,module,exports){
+},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./resources":17,"allex_hierarchymixinslowlevellib":16}],10:[function(require,module,exports){
 module.exports = function (inherit, DestroyableChild){
   'use strict';
   function Child(parnt){
@@ -573,7 +629,7 @@ module.exports = function (inherit, DestroyableChild){
   return Child;
 };
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 module.exports = function (inherit, StaticChild){
   'use strict';
 
@@ -592,7 +648,7 @@ module.exports = function (inherit, StaticChild){
   return DestroyableChild;
 };
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function (inherit,StaticParent) {
   'use strict';
 
@@ -615,7 +671,7 @@ module.exports = function (inherit,StaticParent) {
   return DestroyableParent;
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = function (inherit,DestroyableParent) {
   'use strict';
 
@@ -638,7 +694,7 @@ module.exports = function (inherit,DestroyableParent) {
   return Parent;
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = function () {
   'use strict';
   function StaticChild(parnt){
@@ -675,7 +731,7 @@ module.exports = function () {
   return StaticChild;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 
 function traverseChild(cb, methodname,child,childindex){
   'use strict';
@@ -739,7 +795,7 @@ module.exports = function (DList,get,set) {
   return StaticParent;
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 module.exports = function (inherit, DList, Gettable, Settable) {
   'use strict';
   var StaticParent = require('./StaticParent')(DList,Gettable.get,Settable.set),
@@ -757,7 +813,7 @@ module.exports = function (inherit, DList, Gettable, Settable) {
   };
 };
 
-},{"./Child.js":9,"./DestroyableChild.js":10,"./DestroyableParent.js":11,"./Parent":12,"./StaticChild.js":13,"./StaticParent":14}],16:[function(require,module,exports){
+},{"./Child.js":10,"./DestroyableChild.js":11,"./DestroyableParent.js":12,"./Parent":13,"./StaticChild.js":14,"./StaticParent":15}],17:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
@@ -799,4 +855,4 @@ function createResourcesModule (lib) {
 
 module.exports = createResourcesModule;
 
-},{}]},{},[5]);
+},{}]},{},[6]);

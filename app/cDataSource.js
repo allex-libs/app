@@ -1,4 +1,4 @@
-function createDataSource (lib) {
+function createDataSource (lib, dataSuite) {
   'use strict';
 
   var CLDestroyable = lib.CLDestroyable;
@@ -96,6 +96,30 @@ function createDataSource (lib) {
       var ds = this.environment.dataSources.get(this.source_name);
       if (ds) ds.setFilter(this.filter);
     }
+  };
+
+  AppSideDataSource.prototype.filterData = function (fd) {
+    var filter = ALLEX.dataSuite.filterFactory.createFromDescriptor(fd);
+    var ret = null, data = this.get('data');
+    if (lib.isArray(data)) {
+      ret = lib.arryOperations.findToMatchFilter(data, fd);
+    }
+    filter.destroy();
+    filter = null;
+    return ret;
+  };
+
+  AppSideDataSource.prototype.findFirst = function (fd) {
+    var filter = dataSuite.filterFactory.createFromDescriptor(fd);
+    var ret = null, data = this.get('data');
+
+    if (lib.isArray(data)) {
+      ret = lib.arryOperations.findFirstToMatchFilter(data, fd);
+    }
+
+    filter.destroy();
+    filter = null;
+    return ret;
   };
 
   return AppSideDataSource;

@@ -1,7 +1,8 @@
 function createCommand (lib) {
   'use strict';
 
-  var Settable = lib.Settable;
+  var Settable = lib.Settable,
+    q = lib.q;
 
   function AppSideCommand (command) {
     this.environment = null;
