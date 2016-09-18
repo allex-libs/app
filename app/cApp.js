@@ -23,7 +23,11 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
 
     if (!environment) throw new Error('Unable to find environment descriptor '+item.environment);
     var e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
-    if (!e_datasource) throw new Error('Unable to find datasource within environment description');
+    if (!e_datasource) {
+      e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
+      if (!e_datasource)
+        throw new Error('Unable to find datasource '+source_name+' within environment description');
+    }
 
     var ds = new DataSource(source_name);
     datasources.add(item.name, ds);
@@ -53,7 +57,11 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
       var c_name = item.ecommand || item.command, 
         c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
 
-      if (!c) throw new Error('Unable to find command in environment descriptor');
+      if (!c) {
+        c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
+        if (!c)
+          throw new Error('Unable to find command in environment descriptor');
+      }
       fc = new Command (c_name);
       environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
     }
