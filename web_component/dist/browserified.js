@@ -523,11 +523,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);
+    el.set('actual', desc.actual || false);
     el.initialize();
     el._link = new Linker.LinkingEnvironment(el);
     el._link.produceLinks(desc.links);
     el._link.produceLogic(desc.logic);
-    el.set('actual', desc.actual || false);
   }
 
   function prepareResources (el, requires) {
