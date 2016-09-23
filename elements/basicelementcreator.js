@@ -5,7 +5,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
     q = lib.q,
-    qlib = lib.qlib;
+    qlib = lib.qlib,
+    resourceFactory = Resources.resourceFactory;
 
   function BasicElement (id, options) {
     BasicParent.call(this);
@@ -17,10 +18,12 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.actual = null;
     this._link = null;
     this.resources = null;
+    this._loading_promise = null;
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    this._loading_promise = null;
     if (this.resources) {
       this.resources.destroy();
     }
@@ -56,8 +59,51 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.set_actual = function (val) {
     if (this.actual === val) return false;
     this.actual = val;
+    if (val) {
+      if (!this._loading_promise) {
+        this._loading_promise = this.load();
+        this._loading_promise.done(this.onLoaded.bind(this), this.onLoadFailed.bind(this), this.onLoadProgress.bind(this));
+      }
+    }else{
+      if (this._loading_promise) {
+        this._loading_promise = null;
+        this.unload();
+      }
+      this.onUnloaded();
+    }
     return true;
   };
+
+  function getResourceAndCheckLoad (getResource, promisses, item) {
+    promisses.push (item.load());
+  }
+
+  BasicElement.prototype.load = function () {
+    var resources = this.resources;
+    if (!resources) return q.resolve('ok');
+    var promisses = [];
+    resources.traverse (getResourceAndCheckLoad.bind(null, Resources.getResource, promisses));
+    return q.all(promisses);
+  };
+
+  function unloadResource (el, resource, name) {
+    resource.unload();
+  }
+
+  BasicElement.prototype.unload = function () {
+    if (!this.resources) return;
+    this.resources.traverse (unloadResource.bind(null, this));
+  };
+
+  BasicElement.prototype.onLoaded = function () {
+    throw new Error('onLoaded not implemented');
+  };
+
+  BasicElement.prototype.onLoadFailed = function () {
+    throw new Error('onLoadFailed not implemented');
+  };
+
+  BasicElement.prototype.onLoadProgress = lib.dummyFunc;
 
   BasicElement.prototype.childChanged = function (el, name, value) {
     if ('actual' === name && value) {
@@ -74,6 +120,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return this.resources ? this.resources.get(name) : null;
   };
 
+  BasicElement.prototype.updateResource = function (resource){ //resource : string or hash
+    prepareResource (this, resource);
+  };
+
   BasicElement.createElement = function (desc, after_ctor) {
     var el = elementFactory(desc);
     after_ctor(el);
@@ -87,11 +137,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   function prepareResources (el, requires) {
     if (!requires || !requires.length || !lib.isArray(requires)) return;
-    el.resources = new lib.Map();
     requires.forEach (prepareResource.bind(null, el));
   };
 
   function prepareResource (el, resource) {
+    if (!el.resources) {
+      el.resources = new lib.Map();
+    }
     var resid, resalias;
     if (lib.isString(resource)) {
       resid = resource;
@@ -100,7 +152,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       resid = resource.resource;
       resalias = resource.alias;
     }
-    el.resources.add(resalias, Resources.getResource(resid));
+    el.resources.replace(resalias, Resources.getResource(resid));
   }
 
   return BasicElement;
