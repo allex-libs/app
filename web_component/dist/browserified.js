@@ -890,7 +890,11 @@ function createPreProcessor (lib) {
 
     for (var i in PreProcessors) {
       PreProcessors[i].process(desc);
+      PreProcessors[i].destroy();
+      PreProcessors[i] = null;
     }
+
+    PreProcessors = null;
   }
 
 
