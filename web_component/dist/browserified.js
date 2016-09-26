@@ -645,16 +645,20 @@ function createLib(execlib) {
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources),
-    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement);
+    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement),
+    PreProcessor = require('./preprocessor.js')(lib);
 
   function createApp(desc, pagector) {
     if (RESULT.App) throw new Error("You're not allowed to create more than one App");
+    PreProcessor.process(desc);
     var ret = new App(desc, pagector);
     RESULT.App = ret;
     return ret;
   }
 
   var RESULT = {
+    registerPreprocessor : PreProcessor.registerPreprocessor,
+    BasicProcessor : PreProcessor.BasicProcessor,
     createApp: createApp,
     registerElementType : Elements.registerElementType,
     BasicElement : Elements.BasicElement,
@@ -668,7 +672,7 @@ function createLib(execlib) {
 
 module.exports = createLib;
 
-},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./resources":17,"allex_hierarchymixinslowlevellib":16}],10:[function(require,module,exports){
+},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./preprocessor.js":17,"./resources":18,"allex_hierarchymixinslowlevellib":16}],10:[function(require,module,exports){
 module.exports = function (inherit, DestroyableChild){
   'use strict';
   function Child(parnt){
@@ -871,6 +875,40 @@ module.exports = function (inherit, DList, Gettable, Settable) {
 };
 
 },{"./Child.js":10,"./DestroyableChild.js":11,"./DestroyableParent.js":12,"./Parent":13,"./StaticChild.js":14,"./StaticParent":15}],17:[function(require,module,exports){
+function createPreProcessor (lib) {
+  'use strict';
+
+  var PreProcessors = [];
+
+  function registerPreprocessor (instance) {
+    if (!(instance instanceof BasicProcessor)) throw new Error('PreProcessor must be instance of BasicProcessor'); //za sad ...
+    PreProcessors.push (instance);
+  }
+
+  function process (desc) {
+    if (!PreProcessors.length) return;
+
+    for (var i in PreProcessors) {
+      PreProcessors[i].process(desc);
+    }
+  }
+
+
+  function BasicProcessor () {} 
+  BasicProcessor.prototype.process = function (desc) {
+    throw new Error('Not implemented');
+  };
+  BasicProcessor.prototype.destroy = lib.dummyFunc;
+
+  return  {
+    registerPreprocessor : registerPreprocessor,
+    process : process,
+    BasicProcessor : BasicProcessor
+  };
+}
+module.exports = createPreProcessor;
+
+},{}],18:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
