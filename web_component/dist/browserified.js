@@ -514,6 +514,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
         this._loading_promise = null;
         this.unload();
       }
+      //console.log('will call onUnloaded' ,this.get('id'));
       this.onUnloaded();
     }
     return true;
@@ -573,8 +574,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);
-    el.set('actual', desc.actual || false);
     el.initialize();
+    el.set('actual', desc.actual || false);
     el._link = new Linker.LinkingEnvironment(el);
     el._link.produceLinks(desc.links);
     el._link.produceLogic(desc.logic);
