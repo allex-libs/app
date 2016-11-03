@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -126,6 +126,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
+    executeModifiers (desc);
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);

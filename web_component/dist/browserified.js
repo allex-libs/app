@@ -443,7 +443,7 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./index')(ALLEX));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
 },{"./index":9}],7:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers) {
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -571,6 +571,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
+    executeModifiers (desc);
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);
@@ -607,11 +608,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 module.exports = createBasicElement;
 
 },{}],8:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent, Linker, Resources) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers);
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -645,7 +646,8 @@ function createLib(execlib) {
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
-    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources),
+    Modifier = require('./modifiers')(execlib),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources, Modifier.executeModifiers),
     App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement),
     PreProcessor = require('./preprocessor.js')(lib);
 
@@ -658,6 +660,8 @@ function createLib(execlib) {
   }
 
   var RESULT = {
+    registerModifier : Modifier.registerModifier,
+    BasicModifier : Modifier.BasicModifier,
     registerPreprocessor : PreProcessor.registerPreprocessor,
     BasicProcessor : PreProcessor.BasicProcessor,
     createApp: createApp,
@@ -673,7 +677,73 @@ function createLib(execlib) {
 
 module.exports = createLib;
 
-},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./preprocessor.js":17,"./resources":18,"allex_hierarchymixinslowlevellib":16}],10:[function(require,module,exports){
+},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./modifiers":10,"./preprocessor.js":18,"./resources":19,"allex_hierarchymixinslowlevellib":17}],10:[function(require,module,exports){
+function createModifiers (execlib) {
+  'use strict';
+
+  var lib = execlib.lib, 
+    modifiers = new lib.Map (),
+    Configurable = lib.Configurable;
+
+
+  function BasicModifier (options) {
+    Configurable.call(this, options);
+  }
+  lib.inherit (BasicModifier, Configurable);
+
+  BasicModifier.prototype.destroy = function () {
+    Configurable.prototype.destroy.call(this);
+  };
+
+  BasicModifier.prototype.process = function (element) {
+    this.doProcess(element.name, element.options.elements, element.links, element.logic, element.resources);
+  };
+
+  function registerModifier (name, ctor) {
+    modifiers.add (name, ctor);
+  }
+
+  function executeModifier (name, options, element) {
+    var ctor = modifiers.get(name);
+    if (!ctor) throw new Error('Failed to load modifier: '+name);
+
+    if (ctor.ALLOWED_ON && ctor.ALLOWED_ON.indexOf(element.type) < 0) throw new Error ('Not allowed on '+element.type);
+
+    var instance = new ctor (options);
+
+    instance.process(element);
+    instance.destroy();
+    instance = null;
+  }
+
+  function executeModifiers (element) {
+    if (!element.modifiers) return;
+
+    if (!element.links) element.links = [];
+    if (!element.logic) element.logic = [];
+    if (!element.options) element.options = {};
+    if (!element.options.elements) element.options.elements = [];
+    if (!element.resources) element.resources = [];
+
+    for (var i = 0; i < element.modifiers.length; i++){
+      if (lib.isString(element.modifiers[i])) {
+        executeModifier (element.modifiers[i], null, element);
+      }else{
+        executeModifier (element.modifiers[i].name, element.modifiers[i].options, element);
+      }
+    }
+  }
+
+  return {
+    registerModifier : registerModifier,
+    BasicModifier : BasicModifier,
+    executeModifiers : executeModifiers
+  };
+}
+
+module.exports = createModifiers;
+
+},{}],11:[function(require,module,exports){
 module.exports = function (inherit, DestroyableChild){
   'use strict';
   function Child(parnt){
@@ -691,7 +761,7 @@ module.exports = function (inherit, DestroyableChild){
   return Child;
 };
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function (inherit, StaticChild){
   'use strict';
 
@@ -710,7 +780,7 @@ module.exports = function (inherit, StaticChild){
   return DestroyableChild;
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = function (inherit,StaticParent) {
   'use strict';
 
@@ -733,7 +803,7 @@ module.exports = function (inherit,StaticParent) {
   return DestroyableParent;
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = function (inherit,DestroyableParent) {
   'use strict';
 
@@ -756,7 +826,7 @@ module.exports = function (inherit,DestroyableParent) {
   return Parent;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 module.exports = function () {
   'use strict';
   function StaticChild(parnt){
@@ -793,7 +863,7 @@ module.exports = function () {
   return StaticChild;
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 
 function traverseChild(cb, methodname,child,childindex){
   'use strict';
@@ -857,7 +927,7 @@ module.exports = function (DList,get,set) {
   return StaticParent;
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 module.exports = function (inherit, DList, Gettable, Settable) {
   'use strict';
   var StaticParent = require('./StaticParent')(DList,Gettable.get,Settable.set),
@@ -875,7 +945,7 @@ module.exports = function (inherit, DList, Gettable, Settable) {
   };
 };
 
-},{"./Child.js":10,"./DestroyableChild.js":11,"./DestroyableParent.js":12,"./Parent":13,"./StaticChild.js":14,"./StaticParent":15}],17:[function(require,module,exports){
+},{"./Child.js":11,"./DestroyableChild.js":12,"./DestroyableParent.js":13,"./Parent":14,"./StaticChild.js":15,"./StaticParent":16}],18:[function(require,module,exports){
 function createPreProcessor (lib) {
   'use strict';
 
@@ -913,7 +983,7 @@ function createPreProcessor (lib) {
 }
 module.exports = createPreProcessor;
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
