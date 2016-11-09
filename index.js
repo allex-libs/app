@@ -15,6 +15,9 @@ function createLib(execlib) {
     PreProcessor.process(desc);
     var ret = new App(desc, pagector);
     RESULT.App = ret;
+    if (lib.isFunction (desc.onAppCreated)) {
+      ret.getReadyPromise().done(desc.onAppCreated.bind(null, ret));
+    }
     return ret;
   }
 
