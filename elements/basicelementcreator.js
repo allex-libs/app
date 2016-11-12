@@ -1,4 +1,12 @@
 function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers) {
+  /*
+    possible config params : 
+      onInitialized : array of functions or function to be fired upon init
+      elements : array of children elements
+      onActual : array of function or function to be fired upon actual change
+
+
+  */
 
   'use strict';
   var Child = Hierarchy.Child,
@@ -19,10 +27,26 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._link = null;
     this.resources = null;
     this._loading_promise = null;
+    this._hooks = new lib.Map();
+    this._listeners = new lib.Map();
+    this._addHook ('onInitialized');
+    this._addHook ('onActual');
+    this._addHook ('onLoaded');
+    this.attachHook ('onInitialized', this.getConfigVal('onInitialized'));
   }
   lib.inherit (BasicElement, BasicParent);
 
   BasicElement.prototype.__cleanUp = function () {
+    if (this._listeners) {
+      this._listeners.traverse (lib.arryDestroyAll);
+    }
+    this._listeners.destroy();
+    this._listeners = null;
+
+    lib.containerDestroyAll (this._hooks);
+    this._hooks.destroy();
+    this._hooks = null;
+
     this._loading_promise = null;
     if (this.resources) {
       this.resources.destroy();
@@ -48,6 +72,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     subelements.forEach(this.createElement.bind(this));
   };
 
+  BasicElement.prototype.fireInitializationDone = function () {
+    this.fireHook('onInitialized', [this]);
+    this._removeHook ('onInitialized'); /// no need to keep this any more ...
+    this.attachHook('onActual', this.getConfigVal('onActual'));
+    this.attachHook('onLoaded', this.getConfigVal('onLoaded'));
+  };
+
   BasicElement.prototype.DEFAULT_CONFIG = function () {
     return null;
   };
@@ -69,9 +100,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
         this._loading_promise = null;
         this.unload();
       }
-      //console.log('will call onUnloaded' ,this.get('id'));
       this.onUnloaded();
     }
+
+    this.fireHook ('onActual', [this, val]);
     return true;
   };
 
@@ -156,6 +188,54 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     }
     el.resources.replace(resalias, Resources.getResource(resid));
   }
+
+
+  BasicElement.prototype._addHook = function (name) {
+    this._hooks.add (name, new lib.HookCollection());
+  };
+
+  BasicElement.prototype._getHook = function (name) {
+    var hook = this._hooks.get(name);
+    if (!hook) throw new Error('Hook '+name+' not supported');
+    return hook;
+  };
+
+  BasicElement.prototype.attachHook = function (name, ftions) {
+    if (!ftions) {
+      //destroy hooks which are not needed ...
+      this._removeHook (name);
+      return;
+    }
+    var hook = this._getHook(name);
+
+    if (lib.isFunction(ftions)) {
+      ftions = [ftions];
+    }
+    ftions = ftions.filter(lib.isFunction);
+    var listeners = new Array(ftions.length);
+    for (var i = 0; i < ftions.length; i++){
+      listeners[i] = hook.attach (ftions[i]);
+    }
+    this._listeners.add(name, listeners);
+  };
+
+  BasicElement.prototype.fireHook = function (name, args) {
+    var hook = this._hooks.get(name);
+    if (!hook) return;
+    hook.fire.apply (hook , args);
+  };
+
+  BasicElement.prototype._removeHook = function (name) {
+    var hook = this._hooks.remove(name);
+    if (!hook) return;
+    var _listeners = this._listeners.remove(name);
+    if (_listeners) {
+      lib.arryDestroyAll (_listeners);
+      _listeners = null;
+    }
+    hook.destroy();
+    hook = null;
+  };
 
   return BasicElement;
 }

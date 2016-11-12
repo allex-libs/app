@@ -19,6 +19,20 @@ function createModifiers (execlib) {
     this.doProcess(element.name, element.options, element.links, element.logic, element.resources);
   };
 
+  BasicModifier.prototype.hookToArray = function (ctx, which) {
+    var tp = Array.prototype.slice.call(arguments, 2);
+    if (!ctx[which]) {
+      ctx[which] = tp;
+      return;
+    }
+    if (lib.isFunction(ctx[which])) {
+      ctx[which] = [ctx[which]];
+    }
+    if (lib.isArray(ctx[which])) {
+      Array.prototype.push.apply (ctx[which], tp);
+    }
+  };
+
   function registerModifier (name, ctor) {
     modifiers.add (name, ctor);
   }
