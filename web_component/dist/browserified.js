@@ -80,7 +80,7 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib, dataSuite),
@@ -159,6 +159,7 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
   };
 
   function loadElements (app, desc) {
+    executeModifiers(desc);
     if (desc.elements) {
       desc.elements.forEach (createElement.bind(null, app));
     }
@@ -728,7 +729,7 @@ function createLib(execlib) {
     Resources = require('./resources')(lib),
     Modifier = require('./modifiers')(execlib),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources, Modifier.executeModifiers),
-    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement),
+    App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement, Modifier.executeModifiers),
     PreProcessor = require('./preprocessor.js')(lib);
 
   function createApp(desc, pagector) {

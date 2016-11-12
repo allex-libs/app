@@ -1,4 +1,4 @@
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers){
   'use strict';
 
   var DataSource = require('./cDataSource')(lib, dataSuite),
@@ -77,6 +77,7 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
   };
 
   function loadElements (app, desc) {
+    executeModifiers(desc);
     if (desc.elements) {
       desc.elements.forEach (createElement.bind(null, app));
     }
