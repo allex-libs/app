@@ -16,7 +16,7 @@ function createModifiers (execlib) {
   };
 
   BasicModifier.prototype.process = function (element) {
-    this.doProcess(element.name, element.options.elements, element.links, element.logic, element.resources);
+    this.doProcess(element.name, element.options, element.links, element.logic, element.resources);
   };
 
   function registerModifier (name, ctor) {
