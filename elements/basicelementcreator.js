@@ -88,7 +88,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.set_actual = function (val) {
-    if (this.actual === val) return false;
     this.actual = val;
     if (val) {
       if (!this._loading_promise) {
@@ -128,14 +127,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.resources.traverse (unloadResource.bind(null, this));
   };
 
-  BasicElement.prototype.onLoaded = function () {
-    throw new Error('onLoaded not implemented');
-  };
-
-  BasicElement.prototype.onLoadFailed = function () {
-    throw new Error('onLoadFailed not implemented');
-  };
-
+  BasicElement.prototype.onUnloaded = lib.dummyFunc;
+  BasicElement.prototype.onLoaded = lib.dummyFunc;
+  BasicElement.prototype.onLoadFailed = lib.dummyFunc;
   BasicElement.prototype.onLoadProgress = lib.dummyFunc;
 
   BasicElement.prototype.childChanged = function (el, name, value) {
@@ -162,8 +156,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);
-    el.initialize();
     el.set('actual', desc.actual || false);
+    el.initialize();
     el._link = new Linker.LinkingEnvironment(el);
     el._link.produceLinks(desc.links);
     el._link.produceLogic(desc.logic);

@@ -21,6 +21,8 @@ function createLib(execlib) {
     return ret;
   }
 
+  Elements.registerElementType ('BasicElement', Elements.BasicElement);
+
   var RESULT = {
     registerModifier : Modifier.registerModifier,
     BasicModifier : Modifier.BasicModifier,
