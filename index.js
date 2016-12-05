@@ -5,7 +5,8 @@ function createLib(execlib) {
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
-    Modifier = require('./modifiers')(execlib),
+    misc = require('./misc')(lib),
+    Modifier = require('./modifiers')(execlib, misc),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources, Modifier.executeModifiers),
     App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement, Modifier.executeModifiers),
     PreProcessor = require('./preprocessor.js')(lib);
@@ -16,7 +17,7 @@ function createLib(execlib) {
     var ret = new App(desc, pagector);
     RESULT.App = ret;
     if (lib.isFunction (desc.onAppCreated)) {
-      ret.getReadyPromise().done(desc.onAppCreated.bind(null, ret));
+      ret.onReady(desc.onAppCreated.bind(null, ret));
     }
     return ret;
   }
@@ -33,7 +34,8 @@ function createLib(execlib) {
     BasicElement : Elements.BasicElement,
     registerResourceType : Resources.registerResourceType,
     BasicResourceLoader : Resources.BasicResourceLoader,
-    App : null
+    App : null,
+    misc : misc
   };
 
   return RESULT;

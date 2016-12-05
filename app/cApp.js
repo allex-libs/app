@@ -81,9 +81,13 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     if (desc.elements) {
       desc.elements.forEach (createElement.bind(null, app));
     }
-    EnvironmentFactoryPromise.done (app._link.produceLinks.bind(app._link, desc.links));
-    EnvironmentFactoryPromise.done (app._link.produceLogic.bind(app._link, desc.logic));
-    app._app_ready_defer.resolve('ok');
+
+    EnvironmentFactoryPromise.then(function () {
+      return app._link.produceLinks (desc.links);
+    }).then(function () {
+      return app._link.produceLogic (desc.logic);
+    })
+    .done (app._fireAppReady.bind(app));
   }
 
   function createEnvironment (environments, factory, desc) {
@@ -102,8 +106,8 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     this.commands = new lib.Map();
     this.elements = new lib.Map ();
     this._link = new Linker.LinkingEnvironment(this);
-
-    this._app_ready_defer = lib.q.defer();
+    this.isReady = false;
+    this.ready = new lib.HookCollection();
 
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
@@ -125,14 +129,22 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     ///TODO, big TODO ...
   };
 
-  App.prototype.ready = function (cb) {
-    if (!lib.isFunction (cb)) return;
-    this._app_ready_defer.promise.done(cb);
+  App.prototype._fireAppReady = function () {
+    this.isReady = true;
+    this.ready.fire();
   };
 
-  App.prototype.getReadyPromise = function () {
-    return this._app_ready_defer.promise;
+
+
+  App.prototype.onReady = function (cb) {
+    if (!lib.isFunction (cb)) return;
+    if (this.isReady){
+      lib.runNext(cb);
+      return;
+    }
+    this.ready.attach (cb);
   };
+
 
   App.prototype.childChanged = function () {
     //TODO: nothing for now ...

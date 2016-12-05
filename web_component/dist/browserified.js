@@ -163,9 +163,13 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     if (desc.elements) {
       desc.elements.forEach (createElement.bind(null, app));
     }
-    EnvironmentFactoryPromise.done (app._link.produceLinks.bind(app._link, desc.links));
-    EnvironmentFactoryPromise.done (app._link.produceLogic.bind(app._link, desc.logic));
-    app._app_ready_defer.resolve('ok');
+
+    EnvironmentFactoryPromise.then(function () {
+      return app._link.produceLinks (desc.links);
+    }).then(function () {
+      return app._link.produceLogic (desc.logic);
+    })
+    .done (app._fireAppReady.bind(app));
   }
 
   function createEnvironment (environments, factory, desc) {
@@ -184,8 +188,8 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     this.commands = new lib.Map();
     this.elements = new lib.Map ();
     this._link = new Linker.LinkingEnvironment(this);
-
-    this._app_ready_defer = lib.q.defer();
+    this.isReady = false;
+    this.ready = new lib.HookCollection();
 
     lib.traverseShallow (desc.datasources, linkDataSource.bind(null, this.environments, this.datasources, desc));
     lib.traverseShallow (desc.commands, linkCommand.bind(null, this.commands, this.environments, desc));
@@ -207,14 +211,22 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     ///TODO, big TODO ...
   };
 
-  App.prototype.ready = function (cb) {
-    if (!lib.isFunction (cb)) return;
-    this._app_ready_defer.promise.done(cb);
+  App.prototype._fireAppReady = function () {
+    this.isReady = true;
+    this.ready.fire();
   };
 
-  App.prototype.getReadyPromise = function () {
-    return this._app_ready_defer.promise;
+
+
+  App.prototype.onReady = function (cb) {
+    if (!lib.isFunction (cb)) return;
+    if (this.isReady){
+      lib.runNext(cb);
+      return;
+    }
+    this.ready.attach (cb);
   };
+
 
   App.prototype.childChanged = function () {
     //TODO: nothing for now ...
@@ -721,7 +733,8 @@ function createLib(execlib) {
     BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
     Linker = execlib.execSuite.libRegistry.get('allex_applinkinglib'),
     Resources = require('./resources')(lib),
-    Modifier = require('./modifiers')(execlib),
+    misc = require('./misc')(lib),
+    Modifier = require('./modifiers')(execlib, misc),
     Elements = require('./elements')(lib, Hierarchy, BasicParent,Linker, Resources, Modifier.executeModifiers),
     App = require('./app/cApp')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, execlib.execSuite.libRegistry.get('allex_environmentlib'), Linker, Elements.BasicElement, Modifier.executeModifiers),
     PreProcessor = require('./preprocessor.js')(lib);
@@ -732,7 +745,7 @@ function createLib(execlib) {
     var ret = new App(desc, pagector);
     RESULT.App = ret;
     if (lib.isFunction (desc.onAppCreated)) {
-      ret.getReadyPromise().done(desc.onAppCreated.bind(null, ret));
+      ret.onReady(desc.onAppCreated.bind(null, ret));
     }
     return ret;
   }
@@ -749,7 +762,8 @@ function createLib(execlib) {
     BasicElement : Elements.BasicElement,
     registerResourceType : Resources.registerResourceType,
     BasicResourceLoader : Resources.BasicResourceLoader,
-    App : null
+    App : null,
+    misc : misc
   };
 
   return RESULT;
@@ -757,8 +771,102 @@ function createLib(execlib) {
 
 module.exports = createLib;
 
-},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./modifiers":10,"./preprocessor.js":18,"./resources":19,"allex_hierarchymixinslowlevellib":17}],10:[function(require,module,exports){
-function createModifiers (execlib) {
+},{"./abstractions/cBasicParent":1,"./app/cApp":2,"./elements":8,"./misc":10,"./modifiers":11,"./preprocessor.js":19,"./resources":20,"allex_hierarchymixinslowlevellib":18}],10:[function(require,module,exports){
+function createMisc (lib) {
+  function initLinks (desc) {
+    if (!desc) throw new Error('How do you think to do this with no descriptor?');
+    if (!desc.links) desc.links = [];
+  }
+
+  function initLogic (desc) {
+    if (!desc) throw new Error('How do you think to do this with no descriptor?');
+    if (!desc.logic) desc.logic = [];
+  }
+
+  function initElements (desc) {
+    if (!desc) throw new Error('How do you think to do this with no descriptor?');
+    if (desc.name) {
+      if (!desc.options) desc.options = {};
+      if (!desc.options.elements) desc.options.elements = [];
+    }else{
+      if (!desc.elements) desc.elements = [];
+    }
+  }
+
+  function traverseElements (desc, cb) {
+    if (!lib.isFunction (cb)) throw new Error('Not a function');
+    cb(desc);
+
+    var elements = null;
+
+    if (desc.name) {
+      elements = desc.options && desc.options.elements ? desc.options.elements : null;
+    }else{
+      elements = desc.elements ? desc.elements : null;
+    }
+
+    if (!elements) return;
+    for (var i = 0; i < elements.length; i++) {
+      traverseElements(elements[i], cb);
+    }
+  }
+
+  function findModifier (desc, name) {
+    if (!desc.modifiers) return null;
+    var ret = [];
+    for (var i = 0; i < desc.modifiers.length; i++) {
+      if (desc.modifiers[i] === name  || desc.modifiers[i].name === name) {
+        ret.push (desc.modifiers[i]);
+      }
+    }
+
+    return ret.length ? ret : null;
+  }
+
+  function initOptions (desc) {
+    if (!desc.name) return;
+    if (!desc.options) desc.options = {};
+  }
+
+
+  function initResources (desc) {
+    if (!desc.resources) desc.resources = [];
+  }
+
+  function initAll (desc) {
+    initResources(desc);
+    initLogic(desc);
+    initLinks(desc);
+    initElements (desc);
+  }
+
+  function getElementsArr (desc) {
+    return desc.name ? desc.options.elements : desc.elements;
+  }
+
+  function findElement (desc, name) {
+    return lib.arryOperations.findElementWithProperty(getElementsArr(desc), 'name', name);
+  }
+
+  return {
+
+    findElement : findElement,
+    getElementsArr : getElementsArr,
+    initAll : initAll,
+    initElements : initElements,
+    initLinks : initLinks,
+    initLogic : initLogic,
+    initOptions : initOptions, 
+    initResources : initResources,
+    traverseElements : traverseElements,
+    findModifier : findModifier
+  };
+}
+
+module.exports = createMisc;
+
+},{}],11:[function(require,module,exports){
+function createModifiers (execlib, misc) {
   'use strict';
 
   var lib = execlib.lib, 
@@ -813,11 +921,7 @@ function createModifiers (execlib) {
   function executeModifiers (element) {
     if (!element.modifiers) return;
 
-    if (!element.links) element.links = [];
-    if (!element.logic) element.logic = [];
-    if (!element.options) element.options = {};
-    if (!element.options.elements) element.options.elements = [];
-    if (!element.resources) element.resources = [];
+    misc.initAll(element);
 
     for (var i = 0; i < element.modifiers.length; i++){
       if (lib.isString(element.modifiers[i])) {
@@ -837,7 +941,7 @@ function createModifiers (execlib) {
 
 module.exports = createModifiers;
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function (inherit, DestroyableChild){
   'use strict';
   function Child(parnt){
@@ -855,7 +959,7 @@ module.exports = function (inherit, DestroyableChild){
   return Child;
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = function (inherit, StaticChild){
   'use strict';
 
@@ -874,7 +978,7 @@ module.exports = function (inherit, StaticChild){
   return DestroyableChild;
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = function (inherit,StaticParent) {
   'use strict';
 
@@ -897,7 +1001,7 @@ module.exports = function (inherit,StaticParent) {
   return DestroyableParent;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 module.exports = function (inherit,DestroyableParent) {
   'use strict';
 
@@ -920,7 +1024,7 @@ module.exports = function (inherit,DestroyableParent) {
   return Parent;
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 module.exports = function () {
   'use strict';
   function StaticChild(parnt){
@@ -957,7 +1061,7 @@ module.exports = function () {
   return StaticChild;
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 
 function traverseChild(cb, methodname,child,childindex){
   'use strict';
@@ -1021,7 +1125,7 @@ module.exports = function (DList,get,set) {
   return StaticParent;
 };
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 module.exports = function (inherit, DList, Gettable, Settable) {
   'use strict';
   var StaticParent = require('./StaticParent')(DList,Gettable.get,Settable.set),
@@ -1039,7 +1143,7 @@ module.exports = function (inherit, DList, Gettable, Settable) {
   };
 };
 
-},{"./Child.js":11,"./DestroyableChild.js":12,"./DestroyableParent.js":13,"./Parent":14,"./StaticChild.js":15,"./StaticParent":16}],18:[function(require,module,exports){
+},{"./Child.js":12,"./DestroyableChild.js":13,"./DestroyableParent.js":14,"./Parent":15,"./StaticChild.js":16,"./StaticParent":17}],19:[function(require,module,exports){
 function createPreProcessor (lib) {
   'use strict';
 
@@ -1077,7 +1181,7 @@ function createPreProcessor (lib) {
 }
 module.exports = createPreProcessor;
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),

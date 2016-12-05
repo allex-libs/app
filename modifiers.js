@@ -1,4 +1,4 @@
-function createModifiers (execlib) {
+function createModifiers (execlib, misc) {
   'use strict';
 
   var lib = execlib.lib, 
@@ -53,11 +53,7 @@ function createModifiers (execlib) {
   function executeModifiers (element) {
     if (!element.modifiers) return;
 
-    if (!element.links) element.links = [];
-    if (!element.logic) element.logic = [];
-    if (!element.options) element.options = {};
-    if (!element.options.elements) element.options.elements = [];
-    if (!element.resources) element.resources = [];
+    misc.initAll(element);
 
     for (var i = 0; i < element.modifiers.length; i++){
       if (lib.isString(element.modifiers[i])) {
