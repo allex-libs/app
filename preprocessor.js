@@ -1,31 +1,47 @@
 function createPreProcessor (lib) {
   'use strict';
 
-  var PreProcessors = [];
+  var PreProcessors = new lib.Map ();
 
-  function registerPreprocessor (instance) {
+  function registerPreprocessor (name, ctor) {
+
+    var instance = new ctor();
     if (!(instance instanceof BasicProcessor)) throw new Error('PreProcessor must be instance of BasicProcessor'); //za sad ...
-    PreProcessors.push (instance);
+
+    PreProcessors.add (name, instance);
+  }
+
+  function _doProcess (configs, desc, item, name) {
+    item.configure ( configs ? configs[name] : null);
+    item.process(desc);
+    item.destroy();
   }
 
   function process (desc) {
-    if (!PreProcessors.length) return;
-
-    for (var i in PreProcessors) {
-      PreProcessors[i].process(desc);
-      PreProcessors[i].destroy();
-      PreProcessors[i] = null;
-    }
-
+    var configs = desc.preprocessors;
+    desc.preprocessors = null;
+    PreProcessors.traverse (_doProcess.bind(null, configs, desc));
+    lib.containerDestroyAll (PreProcessors);
+    PreProcessors.destroy();
     PreProcessors = null;
   }
 
 
-  function BasicProcessor () {} 
+  function BasicProcessor () {
+    this.config = null;
+  } 
   BasicProcessor.prototype.process = function (desc) {
     throw new Error('Not implemented');
   };
-  BasicProcessor.prototype.destroy = lib.dummyFunc;
+  BasicProcessor.prototype.destroy = function () {
+    this.config = null;
+  };
+
+  BasicProcessor.prototype.configure = function (config) {
+    this.config = config;
+  };
+
+  //TODO: cinfig interface ?
 
   return  {
     registerPreprocessor : registerPreprocessor,

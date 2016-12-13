@@ -74,8 +74,15 @@ function createMisc (lib) {
     return lib.arryOperations.findElementWithProperty(getElementsArr(desc), 'name', name);
   }
 
-  return {
+  function forgetModifier (desc, mod) {
+    if (!desc.modifiers) return;
+    var index = desc.modifiers.indexOf(mod);
+    if (index < 0) return;
 
+    desc.modifiers.splice(index, 1);
+  }
+
+  return {
     findElement : findElement,
     getElementsArr : getElementsArr,
     initAll : initAll,
@@ -85,7 +92,8 @@ function createMisc (lib) {
     initOptions : initOptions, 
     initResources : initResources,
     traverseElements : traverseElements,
-    findModifier : findModifier
+    findModifier : findModifier,
+    forgetModifier : forgetModifier,
   };
 }
 
