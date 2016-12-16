@@ -313,10 +313,12 @@ function createDataSource (lib, dataSuite) {
     this.environment = null;
     this._esl = null;
     this.filter = null;
+    this.busy = false;
   }
 
   lib.inherit (AppSideDataSource, CLDestroyable);
   AppSideDataSource.prototype.__cleanUp = function () {
+    this.busy = true;
     if (this._esl) this._esl.destroy();
     this._esl = null;
     this.filter = null;
