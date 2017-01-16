@@ -71,6 +71,9 @@ function createDataSource (lib, dataSuite) {
   AppSideDataSource.prototype._bindToDS = function () {
     if (!this.environment || !this.environment.isEstablished()) return;
     var ds = this.environment.dataSources.get(this.source_name);
+    if (!ds) {
+      return; ///no datasource ...
+    }
     ds.setFilter(this.filter);
     ds.setTarget(this);
     this.set('running', true);
