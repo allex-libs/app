@@ -19,9 +19,10 @@ function createMisc (lib) {
     }
   }
 
-  function traverseElements (desc, cb) {
+  function traverseElements (desc, cb, path) {
     if (!lib.isFunction (cb)) throw new Error('Not a function');
-    cb(desc);
+    if (!path) path = [];
+    cb(desc, path);
 
     var elements = null;
 
@@ -33,8 +34,15 @@ function createMisc (lib) {
 
     if (!elements) return;
     for (var i = 0; i < elements.length; i++) {
-      traverseElements(elements[i], cb);
+      traverseElements(elements[i], cb, path.concat([elements[i].name]));
     }
+  }
+
+  function anyOfModifiers (desc, modifiers) {
+    for (var i in modifiers) {
+      if (findModifier(desc, modifiers[i])) return true;
+    }
+    return false;
   }
 
   function findModifier (desc, name) {
@@ -94,6 +102,7 @@ function createMisc (lib) {
     traverseElements : traverseElements,
     findModifier : findModifier,
     forgetModifier : forgetModifier,
+    anyOfModifiers : anyOfModifiers
   };
 }
 

@@ -27,6 +27,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._link = null;
     this.resources = null;
     this._loading_promise = null;
+    this.loading = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
     this._addHook ('onInitialized');
@@ -48,6 +49,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._hooks = null;
 
     this._loading_promise = null;
+    this.loading = null;
     if (this.resources) {
       this.resources.destroy();
     }
@@ -89,9 +91,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.set_actual = function (val) {
     this.actual = val;
+    var ld = this.set.bind(this, 'loading', false);
     if (val) {
       if (!this._loading_promise) {
+        this.set('loading', true);
         this._loading_promise = this.load();
+
+        this._loading_promise.done(ld, ld);
         this._loading_promise.done(this.onLoaded.bind(this), this.onLoadFailed.bind(this), this.onLoadProgress.bind(this));
       }
     }else{

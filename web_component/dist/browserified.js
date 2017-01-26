@@ -490,6 +490,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._link = null;
     this.resources = null;
     this._loading_promise = null;
+    this.loading = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
     this._addHook ('onInitialized');
@@ -511,6 +512,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._hooks = null;
 
     this._loading_promise = null;
+    this.loading = null;
     if (this.resources) {
       this.resources.destroy();
     }
@@ -552,9 +554,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.set_actual = function (val) {
     this.actual = val;
+    var ld = this.set.bind(this, 'loading', false);
     if (val) {
       if (!this._loading_promise) {
+        this.set('loading', true);
         this._loading_promise = this.load();
+
+        this._loading_promise.done(ld, ld);
         this._loading_promise.done(this.onLoaded.bind(this), this.onLoadFailed.bind(this), this.onLoadProgress.bind(this));
       }
     }else{
@@ -798,9 +804,10 @@ function createMisc (lib) {
     }
   }
 
-  function traverseElements (desc, cb) {
+  function traverseElements (desc, cb, path) {
     if (!lib.isFunction (cb)) throw new Error('Not a function');
-    cb(desc);
+    if (!path) path = [];
+    cb(desc, path);
 
     var elements = null;
 
@@ -812,8 +819,15 @@ function createMisc (lib) {
 
     if (!elements) return;
     for (var i = 0; i < elements.length; i++) {
-      traverseElements(elements[i], cb);
+      traverseElements(elements[i], cb, path.concat([elements[i].name]));
     }
+  }
+
+  function anyOfModifiers (desc, modifiers) {
+    for (var i in modifiers) {
+      if (findModifier(desc, modifiers[i])) return true;
+    }
+    return false;
   }
 
   function findModifier (desc, name) {
@@ -873,6 +887,7 @@ function createMisc (lib) {
     traverseElements : traverseElements,
     findModifier : findModifier,
     forgetModifier : forgetModifier,
+    anyOfModifiers : anyOfModifiers
   };
 }
 
