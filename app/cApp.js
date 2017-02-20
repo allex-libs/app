@@ -29,14 +29,9 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
         throw new Error('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name);
+    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
     datasources.add(item.name, ds);
-    if ('should_running' in item) {
-      ds.set('should_running', item.should_running);
-    }
-    if ('filter' in item) {
-      ds.set('filter', item.filter);
-    }
+    console.log('POSTAVIO ',item.should_running, item.name);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 

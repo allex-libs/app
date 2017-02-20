@@ -3,15 +3,15 @@ function createDataSource (lib, dataSuite) {
 
   var CLDestroyable = lib.CLDestroyable;
 
-  function AppSideDataSource (source_name) {
+  function AppSideDataSource (source_name, should_running, filter) {
     CLDestroyable.call(this);
-    this.should_running = true;
+    this.should_running = should_running;
     this.running = false;
     this.source_name = source_name;
     this.data = null;
     this.environment = null;
     this._esl = null;
-    this.filter = null;
+    this.filter = filter;
     this.busy = false;
   }
 

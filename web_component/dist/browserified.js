@@ -111,14 +111,9 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
         throw new Error('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name);
+    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
     datasources.add(item.name, ds);
-    if ('should_running' in item) {
-      ds.set('should_running', item.should_running);
-    }
-    if ('filter' in item) {
-      ds.set('filter', item.filter);
-    }
+    console.log('POSTAVIO ',item.should_running, item.name);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 
@@ -304,15 +299,15 @@ function createDataSource (lib, dataSuite) {
 
   var CLDestroyable = lib.CLDestroyable;
 
-  function AppSideDataSource (source_name) {
+  function AppSideDataSource (source_name, should_running, filter) {
     CLDestroyable.call(this);
-    this.should_running = true;
+    this.should_running = should_running;
     this.running = false;
     this.source_name = source_name;
     this.data = null;
     this.environment = null;
     this._esl = null;
-    this.filter = null;
+    this.filter = filter;
     this.busy = false;
   }
 
