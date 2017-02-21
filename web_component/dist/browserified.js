@@ -113,7 +113,6 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
 
     var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
     datasources.add(item.name, ds);
-    console.log('POSTAVIO ',item.should_running, item.name);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 
