@@ -62,6 +62,14 @@ function createResourcesModule (lib) {
     ///TODO ...
   };
   BasicResourceLoader.prototype.loadOnDemand = function () { return false; }
+  BasicResourceLoader.getResourceFromName = function (name) {
+    return getResource(name);
+  };
+
+  BasicResourceLoader.getResourcesFromNames = function (names) {
+    if (!lib.isArray(names)) throw new Error 'Must be an array';
+    return names.map (getResource);
+  };
 
   function getResource (name) {
     var c = ResourceRegistry.get(name);
