@@ -67,7 +67,7 @@ function createResourcesModule (lib) {
   };
 
   BasicResourceLoader.getResourcesFromNames = function (names) {
-    if (!lib.isArray(names)) throw new Error 'Must be an array';
+    if (!lib.isArray(names)) throw new Error ('Must be an array');
     return names.map (getResource);
   };
 
