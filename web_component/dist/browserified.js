@@ -854,11 +854,29 @@ function createMisc (lib) {
   }
 
   function getElementsArr (desc) {
-    return desc.name ? desc.options.elements : desc.elements;
+    if (!desc.name) {
+      return desc.elements;
+    }
+
+    return desc.options ? desc.options.elements : null;
   }
 
   function findElement (desc, name) {
-    return lib.arryOperations.findElementWithProperty(getElementsArr(desc), 'name', name);
+    var s = name.split('.'),
+      fn = s.shift();
+
+    var els_arr = getElementsArr(desc);
+    if (!els_arr) return null;
+    var el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
+
+    while (s.length) {
+      fn = s.shift();
+      els_arr = getElementsArr(el);
+      if (!els_arr) return null;
+      el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
+      if (!el) return null;
+    }
+    return el;
   }
 
   function forgetModifier (desc, mod) {
@@ -1284,6 +1302,14 @@ function createResourcesModule (lib) {
     ///TODO ...
   };
   BasicResourceLoader.prototype.loadOnDemand = function () { return false; }
+  BasicResourceLoader.getResourceFromName = function (name) {
+    return getResource(name);
+  };
+
+  BasicResourceLoader.getResourcesFromNames = function (names) {
+    if (!lib.isArray(names)) throw new Error ('Must be an array');
+    return names.map (getResource);
+  };
 
   function getResource (name) {
     var c = ResourceRegistry.get(name);

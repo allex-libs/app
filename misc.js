@@ -75,11 +75,29 @@ function createMisc (lib) {
   }
 
   function getElementsArr (desc) {
-    return desc.name ? desc.options.elements : desc.elements;
+    if (!desc.name) {
+      return desc.elements;
+    }
+
+    return desc.options ? desc.options.elements : null;
   }
 
   function findElement (desc, name) {
-    return lib.arryOperations.findElementWithProperty(getElementsArr(desc), 'name', name);
+    var s = name.split('.'),
+      fn = s.shift();
+
+    var els_arr = getElementsArr(desc);
+    if (!els_arr) return null;
+    var el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
+
+    while (s.length) {
+      fn = s.shift();
+      els_arr = getElementsArr(el);
+      if (!els_arr) return null;
+      el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
+      if (!el) return null;
+    }
+    return el;
   }
 
   function forgetModifier (desc, mod) {
