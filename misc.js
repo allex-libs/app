@@ -108,7 +108,16 @@ function createMisc (lib) {
     desc.modifiers.splice(index, 1);
   }
 
+  function addHook (options, name, cb) {
+    if (options[name] && !lib.isArray(options[name])) {
+      options[name] = [options[name]];
+    }
+    if (!options[name]) options[name] = [];
+    options[name].push (cb);
+  }
+
   return {
+    addHook : addHook,
     findElement : findElement,
     getElementsArr : getElementsArr,
     initAll : initAll,
