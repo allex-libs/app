@@ -484,6 +484,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._link = null;
     this.resources = null;
     this._loading_promise = null;
+    this.loadEvent = new lib.HookCollection();
     this.loading = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
@@ -504,6 +505,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     lib.containerDestroyAll (this._hooks);
     this._hooks.destroy();
     this._hooks = null;
+
+    this.loadEvent.destroy();
+    this.loadEvent = null;
 
     this._loading_promise = null;
     this.loading = null;
@@ -554,7 +558,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
         this.set('loading', true);
         this._loading_promise = this.load();
 
-        this._loading_promise.done(ld, ld);
+        this._loading_promise.done(ld, ld, this.loadEvent.fire.bind(this.loadEvent));
         this._loading_promise.done(this.onLoaded.bind(this), this.onLoadFailed.bind(this), this.onLoadProgress.bind(this));
       }
     }else{
@@ -569,15 +573,18 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return true;
   };
 
-  function getResourceAndCheckLoad (getResource, promisses, item) {
-    promisses.push (item.load());
+  function getResourceAndCheckLoad (loadEvent, getResource, promisses, item) {
+    //promisses.push (item.load());
+    var p = item.load();
+    p.done(null, null, loadEvent.fire.bind(loadEvent));
+    promisses.push (p);
   }
 
   BasicElement.prototype.load = function () {
     var resources = this.resources;
     if (!resources) return q.resolve('ok');
     var promisses = [];
-    resources.traverse (getResourceAndCheckLoad.bind(null, Resources.getResource, promisses));
+    resources.traverse (getResourceAndCheckLoad.bind(null, this.loadEvent, Resources.getResource, promisses));
     return q.all(promisses);
   };
 
