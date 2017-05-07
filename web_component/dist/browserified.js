@@ -559,7 +559,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
         this._loading_promise = this.load();
 
         this._loading_promise.done(ld, ld, this.loadEvent.fire.bind(this.loadEvent));
-        this._loading_promise.done(this.onLoaded.bind(this), this.onLoadFailed.bind(this), this.onLoadProgress.bind(this));
+        this._loading_promise.done(this.onLoaded.bind(this), this._onLoadFailed.bind(this), this.onLoadProgress.bind(this));
       }
     }else{
       if (this._loading_promise) {
@@ -595,6 +595,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.unload = function () {
     if (!this.resources) return;
     this.resources.traverse (unloadResource.bind(null, this));
+  };
+
+  BasicElement.prototype._onLoadFailed = function (reason) {
+    console.error(reason);
+    this.onLoaded(reason);
   };
 
   BasicElement.prototype.onUnloaded = lib.dummyFunc;
@@ -1135,9 +1140,13 @@ module.exports = function (DList,get,set) {
     this.__children = new DList();
   }
   StaticParent.prototype.__cleanUp = function(){
-    this.__children.traverse(this.destroyChild.bind(this));
+    this.purge();
     this.__children.destroy();
     this.__children = null;
+  };
+
+  StaticParent.prototype.purge = function () {
+    this.__children.traverse(this.destroyChild.bind(this));
   };
   StaticParent.prototype.addChild = function(child){
     var op = get(child,'__parent');
