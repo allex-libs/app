@@ -1,13 +1,13 @@
-function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor);
 
   function elementFactory (desc) {
     var type = desc.type;
     if (!type) throw new Error('No type in element descriptor');
-    var ctor = ElementTypeRegistry.get(type);
+    var ctor = getElementType(type);
 
     if (!ctor) throw new Error('No ctor found for element type: '+type);
     var instance = new ctor(desc.name, desc.options);
@@ -19,10 +19,15 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
     ElementTypeRegistry.add(elementtype_name, ctor);
   }
 
+  function getElementType (type) {
+    return ElementTypeRegistry.get(type);
+  }
+
   return {
     BasicElement : BasicElement,
     elementFactory : elementFactory,
-    registerElementType : registerElementType
+    registerElementType : registerElementType,
+    getElementType : getElementType
   }
 }
 

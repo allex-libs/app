@@ -1,9 +1,6 @@
-function createAppLib (lib) {
+function createAppLib (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib) {
   'use strict';
-  return {
-    DataSource : require('./cDataSource')(lib),
-    Command : require('./cCommand')(lib)
-  };
+  return require('./appcreator')(lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib);
 }
 
-return createAppLib;
+module.exports = createAppLib;

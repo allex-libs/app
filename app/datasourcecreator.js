@@ -32,7 +32,7 @@ function createDataSource (lib, dataSuite) {
   //TODO: ovde sad treba jos da se radi ... kad se env ukaci, prevezi data source - ove ...
   AppSideDataSource.prototype._processShouldRunning  = function () {
     if (this.should_running) {
-      this.start()
+      this.start();
     }else{
       this.stop();
     }
@@ -96,7 +96,11 @@ function createDataSource (lib, dataSuite) {
   };
 
   AppSideDataSource.prototype.set_filter = function (filter) {
+    if (lib.isEqual(filter, this.filter)) {
+      return false;
+    }
     this.filter = filter;
+    this.set('data', null);
     if (this.should_running && this.environment) {
       var ds = this.environment.dataSources.get(this.source_name);
       if (ds) ds.setFilter(this.filter);

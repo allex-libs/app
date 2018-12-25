@@ -2,14 +2,19 @@ function create (lib, Hierarchy) {
   'use strict';
 
   var ChangeableListenable = lib.ChangeableListenable,
+    Destroyable = lib.Destroyable,
     Parent = Hierarchy.Parent,
     Listenable = lib.Listenable;
 
   function BasicParent () {
     Parent.call(this);
+    Destroyable.call(this);
     ChangeableListenable.call(this);
   }
   lib.inherit(BasicParent, Parent);
+  BasicParent.prototype.destroy = Destroyable.prototype.destroy;
+  BasicParent.prototype.extendTo = Destroyable.prototype.extendTo;
+  BasicParent.prototype.shouldDie = Destroyable.prototype.shouldDie;
   ChangeableListenable.addMethods (BasicParent);
 
   BasicParent.prototype.__cleanUp = function () {

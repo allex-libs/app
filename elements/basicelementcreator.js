@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -13,14 +13,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
     q = lib.q,
-    qlib = lib.qlib,
-    resourceFactory = Resources.resourceFactory;
+    qlib = lib.qlib;
 
   function BasicElement (id, options) {
+    console.log('new', this.constructor.name, id);
     BasicParent.call(this);
     Child.call(this);
     Gettable.call(this);
     Configurable.call(this, options);
+    LinksAndLogicDestroyableMixin.call(this);
 
     this.id = id;
     this.actual = null;
@@ -29,6 +30,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._loading_promise = null;
     this.loadEvent = new lib.HookCollection();
     this.loading = false;
+    this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
     this._addHook ('onInitialized');
@@ -37,8 +39,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.attachHook ('onInitialized', this.getConfigVal('onInitialized'));
   }
   lib.inherit (BasicElement, BasicParent);
+  LinksAndLogicDestroyableMixin.addMethods(BasicElement);
 
   BasicElement.prototype.__cleanUp = function () {
+    console.log(this.constructor.name, this.id, 'dying');
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -53,6 +57,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.loadEvent = null;
 
     this._loading_promise = null;
+    this.initialized = null;
     this.loading = null;
     if (this.resources) {
       this.resources.destroy();
@@ -63,9 +68,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.actual = null;
     this.id = null;
 
+    LinksAndLogicDestroyableMixin.prototype.destroy.call(this);
     Configurable.prototype.__cleanUp.call(this);
     Gettable.prototype.__cleanUp.call(this);
     Child.prototype.__cleanUp.call(this);
+    BasicParent.prototype.__cleanUp.call(this);
   };
 
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
@@ -74,13 +81,35 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.initialize = function () {
     var subelements = this.getConfigVal('elements');
-    if (!subelements || subelements.length === 0){ return; }
-    subelements.forEach(this.createElement.bind(this));
+
+    this.actual = this.getConfigVal('actual') || false;
+    handleLoading(this, this.getConfigVal('actual'));
+    if (lib.isArray(subelements)) {
+      subelements.forEach(this.createElement.bind(this));
+    }
+    this.fireInitializationDone();
   };
+
+  function handleLoading (be, newactual) {
+    if (newactual) {
+      if (!be._loading_promise) {
+        be.set('loading', true);
+        be._loading_promise = be.load();
+        be._loading_promise.then(be.onLoaded.bind(be), be.onLoadFailed.bind(be), be.onLoadProgress.bind(be));
+      }
+    }else{
+      if (be._loading_promise) {
+        be._loading_promise = null;
+        be.unload();
+      }
+      be.onUnloaded();
+    }
+  }
 
   BasicElement.prototype.fireInitializationDone = function () {
     this.fireHook('onInitialized', [this]);
     this._removeHook ('onInitialized'); /// no need to keep this any more ...
+    this.set('initialized', true);
     this.attachHook('onActual', this.getConfigVal('onActual'));
     this.attachHook('onLoaded', this.getConfigVal('onLoaded'));
   };
@@ -94,41 +123,29 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.set_actual = function (val) {
-    this.actual = val;
-    var ld = this.set.bind(this, 'loading', false);
-    if (val) {
-      if (!this._loading_promise) {
-        this.set('loading', true);
-        this._loading_promise = this.load();
-
-        this._loading_promise.done(ld, ld, this.loadEvent.fire.bind(this.loadEvent));
-        this._loading_promise.done(this.onLoaded.bind(this), this._onLoadFailed.bind(this), this.onLoadProgress.bind(this));
-      }
-    }else{
-      if (this._loading_promise) {
-        this._loading_promise = null;
-        this.unload();
-      }
-      this.onUnloaded();
+    if (!this.loadEvent) {
+      return;
     }
+    this.actual = val;
+    handleLoading(this, val);
 
     this.fireHook ('onActual', [this, val]);
     return true;
   };
 
-  function getResourceAndCheckLoad (loadEvent, getResource, promisses, item) {
-    //promisses.push (item.load());
+  function getResourceAndCheckLoad (loadEvent, getResource, promises, item) {
+    //promises.push (item.load());
     var p = item.load();
     p.done(null, null, loadEvent.fire.bind(loadEvent));
-    promisses.push (p);
+    promises.push (p);
   }
 
   BasicElement.prototype.load = function () {
     var resources = this.resources;
     if (!resources) return q.resolve('ok');
-    var promisses = [];
-    resources.traverse (getResourceAndCheckLoad.bind(null, this.loadEvent, Resources.getResource, promisses));
-    return q.all(promisses);
+    var promises = [];
+    resources.traverse (getResourceAndCheckLoad.bind(null, this.loadEvent, Resources.getResource, promises));
+    return q.all(promises);
   };
 
   function unloadResource (el, resource, name) {
@@ -140,14 +157,20 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.resources.traverse (unloadResource.bind(null, this));
   };
 
-  BasicElement.prototype._onLoadFailed = function (reason) {
-    console.error(reason);
-    this.onLoaded(reason);
+  BasicElement.prototype.onLoaded = function () {
+    this.set('loading', false);
+    this.loadEvent.fire(this);
   };
 
-  BasicElement.prototype.onUnloaded = lib.dummyFunc;
-  BasicElement.prototype.onLoaded = lib.dummyFunc;
-  BasicElement.prototype.onLoadFailed = lib.dummyFunc;
+  BasicElement.prototype.onLoadFailed = function (reason) {
+    console.error(reason);
+    this.onUnloaded();
+  };
+
+  BasicElement.prototype.onUnloaded = function () {
+    this.set('loading', false);
+  };
+
   BasicElement.prototype.onLoadProgress = lib.dummyFunc;
 
   BasicElement.prototype.childChanged = function (el, name, value) {
@@ -170,15 +193,20 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
+    PrePreProcessor.process(desc);
+    PreProcessor.process(desc);
     executeModifiers (desc);
     var el = elementFactory(desc);
     after_ctor(el);
     prepareResources(el, desc.requires);
-    el.set('actual', desc.actual || false);
+    if ('actual' in desc) {
+      console.error(desc);
+      throw new Error('actual has to be in "options"');
+    }
     el.initialize();
     el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links);
-    el._link.produceLogic(desc.logic);
+    el._link.produceLinks(desc.links).then(el.setLinks.bind(el));
+    el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
   }
 
   function prepareResources (el, requires) {
@@ -232,6 +260,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.fireHook = function (name, args) {
+    if (!this._hooks) {
+      console.error('already dead');
+      return;
+    }
     var hook = this._hooks.get(name);
     if (!hook) return;
     hook.fire.apply (hook , args);

@@ -84,11 +84,16 @@ function createMisc (lib) {
 
   function findElement (desc, name) {
     var s = name.split('.'),
-      fn = s.shift();
+      fn = s.shift(),
+      els_arr, el;
 
-    var els_arr = getElementsArr(desc);
-    if (!els_arr) return null;
-    var el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
+    if (!name) {
+      return desc;
+    }
+    els_arr = getElementsArr(desc);
+    if (!lib.isArray(els_arr)) return null;
+    if (!fn) return desc;
+    el = lib.arryOperations.findElementWithProperty(els_arr, 'name', fn);
 
     while (s.length) {
       fn = s.shift();

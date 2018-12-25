@@ -1,15 +1,25 @@
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
-    ResourceRegistry = new lib.Map ();
+    ResourceRegistry = new lib.Map (),
+    ResourceParams = new lib.Map ();
 
   function resourceFactory (app, desc) {
-    var ctor = ResourceTypeRegistry.get(desc.type);
-    if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+name));
-    var instance = new ctor(desc.options, app);
-    var promise = instance._load(desc.lazy);
-    ResourceRegistry.add (desc.name, {instance: instance, promise : promise});
+    var ctor, instance, promise;
+    console.log('creating Resource', desc.name||desc.type, 'for', desc.options);
+    ctor = ResourceTypeRegistry.get(desc.type);
+    if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+desc.type));
+    instance = new ctor(desc.options, app);
+    promise = instance._load(desc.lazy);
+    ResourceRegistry.add (desc.name||desc.type, {instance: instance, promise : promise});
     return promise;
+  }
+
+  function loadResourceParams (desc) {
+    ResourceParams.replace(desc.name||desc.type, lib.extendWithConcat(
+      ResourceParams.get(desc.name||desc.type) || {},
+      desc
+    ));
   }
 
   function BasicResourceLoader (options) {
@@ -76,12 +86,26 @@ function createResourcesModule (lib) {
     return c ? c.instance : null;
   }
 
+  function destroyResource (name) {
+    var c = ResourceRegistry.remove(name);
+    if (c) {
+      if (c.instance) {
+        c.instance.destroy();
+      }
+      //TODO: the promise has to reject finally
+    }
+  }
+
   return {
     registerResourceType : ResourceTypeRegistry.add.bind(ResourceTypeRegistry),
+    getResourceType : ResourceTypeRegistry.get.bind(ResourceTypeRegistry),
     resourceFactory : resourceFactory,
+    loadResourceParams : loadResourceParams,
     getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    destroyResource : destroyResource,
     BasicResourceLoader : BasicResourceLoader,
-    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry)
+    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry),
+    traverseResourceParams : ResourceParams.traverse.bind(ResourceParams)
   }
 }
 

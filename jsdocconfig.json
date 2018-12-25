@@ -1,0 +1,13 @@
+{
+  "source": {
+    "include": [".", "app", "mixins", "preprocessingregistry", "preprocessors"],
+    "includePattern": ".+\\js?$"
+  },
+  "opts": {
+    "destination": "./jsdoc/html"
+  },
+  "plugins": ["plugins/markdown"],
+  "allex": {
+    "root": "/doc"
+  }
+}
