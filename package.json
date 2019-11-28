@@ -1,6 +1,6 @@
 {
   "name": "allex_applib",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Library for an AllexJS app",
   "main": "index.js",
   "scripts": {
@@ -18,7 +18,6 @@
   "author": "HERS Belgrade",
   "license": "ISC",
   "dependencies": {
-    "allex_hierarchymixinslowlevellib": "1.x",
     "allex_arrayoperationslowlevellib": "1.x"
   }
 }

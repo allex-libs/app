@@ -85,12 +85,12 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib){
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, jobondestroyablelib, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers);
+    joblib = require('./jobs')(lib, jobondestroyablelib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   /**
    * @class
@@ -451,7 +451,7 @@ function createAppJob (lib, jobondestroyablelib) {
 module.exports = createAppJob;
 
 },{}],8:[function(require,module,exports){
-function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers) {
+function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environmentFactory, BasicElement, executeModifiers) {
   'use strict';
 
   var q = lib.q,
@@ -459,6 +459,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     Command = require('../commandcreator')(lib),
     FunctionCommand = require('../functioncommandcreator')(lib),
     DataSource = require('../datasourcecreator')(lib, dataSuite);
+
+  //supporting the "no environmentlib" case
 
   function DescriptorLoaderJob (descriptorhandler, app, defer) {
     AppJob.call(this, app, defer);
@@ -488,17 +490,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
     );
 
-    /*
-    EnvironmentFactoryPromise.then(
-      this.loadEnvironments.bind(this)
-    ).then(
+    this.loadEnvironments().then(
       this.handleResources.bind(this)
-    );
-    */
-    EnvironmentFactoryPromise.then(
-      this.loadEnvironments.bind(this)
-    ).then(
-      this.loadElements.bind(this)
     );
 
     return ok.val;
@@ -515,8 +508,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     this.onResourcesLoaded();
   };
   DescriptorLoaderJob.prototype.onResourcesLoaded = function () {
-    //return this.loadElements();
-    this.onAllDone();
+    return this.loadElements();
+    //this.onAllDone();
   };
   DescriptorLoaderJob.prototype.loadElements = function () {
     var app;
@@ -524,26 +517,19 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       return;
     }
     app = this.destroyable;
-    executeModifiers(this.descriptorHandler.descriptor);
+    executeModifiers(false, this.descriptorHandler.descriptor);
     if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
       this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
     }
 
-    return EnvironmentFactoryPromise.then(
-      this.produceLinks.bind(this)
-    ).then(
+    this.produceLinks().then(
       this.produceLogic.bind(this)
     ).then(
       this.onElementsLoaded.bind(this)
     );
   };
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
-    EnvironmentFactoryPromise.then(
-//      this.loadEnvironments.bind(this)
-//    ).then(
-      this.handleResources.bind(this)
-    );
-    //this.onAllDone();
+    this.onAllDone();
   };
   DescriptorLoaderJob.prototype.createElement = function (desc) {
     if (!this.okToProceed()) {
@@ -578,23 +564,27 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       this.descriptorHandler.setLogic.bind(this.descriptorHandler)
     );
   };
-  DescriptorLoaderJob.prototype.loadEnvironments = function (factory) {
+  DescriptorLoaderJob.prototype.loadEnvironments = function () {
+    if (!lib.isFunction(environmentFactory)) {
+      console.warn('Environment factory not found. Did you load allex_environmentlib?')
+      return q(true);
+    }
     if (!this.okToProceed()) {
       return;
     }
     if (!lib.isArray(this.descriptorHandler.descriptor.environments)) {
-      return;
+      return q(true);
     }
-    this.descriptorHandler.descriptor.environments.forEach(this.createEnvironment.bind(this, factory));
-    factory = null;
+    this.descriptorHandler.descriptor.environments.forEach(this.createEnvironment.bind(this));
+    return q(true);
   };
-  DescriptorLoaderJob.prototype.createEnvironment = function (factory, envdesc) {
-    console.log('createEnvironment', factory, envdesc);
+  DescriptorLoaderJob.prototype.createEnvironment = function (envdesc) {
+    console.log('createEnvironment', envdesc);
     var env, name;
     if (!this.okToProceed()) {
       return;
     }
-    env = factory(envdesc);
+    env = environmentFactory(envdesc);
     name = envdesc.name;
     this.destroyable.environments.add(name, env);
     this.descriptorHandler.addEnvironmentName(name);
@@ -633,7 +623,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     if (!e_datasource) {
       e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
       if (!e_datasource)
-        throw new Error('Unable to find datasource '+source_name+' within environment description');
+        console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
     var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
@@ -661,7 +651,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       if (!c) {
         c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
         if (!c)
-          throw new Error('Unable to find command '+c_name+' in environment descriptor');
+          console.warn('Unable to find command '+c_name+' in environment descriptor');
       }
       fc = new Command (c_name);
       environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
@@ -678,11 +668,11 @@ module.exports = createDescriptorLoaderJob;
 
 
 },{"../commandcreator":3,"../datasourcecreator":4,"../functioncommandcreator":5}],9:[function(require,module,exports){
-function createAppJobs (lib, jobondestroyablelib, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers) {
+function createAppJobs (lib, jobondestroyablelib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers) {
   'use strict';
 
   var AppJob = require('./appjobcreator')(lib, jobondestroyablelib),
-    DescriptorLoaderJob = require('./descriptorloaderjobcreator')(lib, AppJob, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers);
+    DescriptorLoaderJob = require('./descriptorloaderjobcreator')(lib, AppJob, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   return {
     AppJob: AppJob,
@@ -693,10 +683,10 @@ function createAppJobs (lib, jobondestroyablelib, dataSuite, Resources, Environm
 module.exports = createAppJobs;
 
 },{"./appjobcreator":7,"./descriptorloaderjobcreator":8}],10:[function(require,module,exports){
-ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(ALLEX, ALLEX.execSuite.libRegistry.get('allex_applinkinglib'), ALLEX.execSuite.libRegistry.get('allex_jobondestroyablelib'), ALLEX.execSuite.libRegistry.get('allex_environmentlib')));
+ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(ALLEX, ALLEX.execSuite.libRegistry.get('allex_applinkinglib'), ALLEX.execSuite.libRegistry.get('allex_jobondestroyablelib'), ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'), ALLEX.execSuite.libRegistry.get('allex_environmentlib')));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./libindex":15}],11:[function(require,module,exports){
+},{"./libindex":18}],11:[function(require,module,exports){
 function createDescriptorApi (lib) {
   var ArryOps = require('allex_arrayoperationslowlevellib')(lib.extend, lib.readPropertyFromDotDelimitedString, lib.isFunction, lib.Map, lib.AllexJSONizingError);
 
@@ -737,10 +727,11 @@ function createDescriptorApi (lib) {
 module.exports = createDescriptorApi;
     
 
-},{"allex_arrayoperationslowlevellib":19}],12:[function(require,module,exports){
-function createDescriptorHandler (lib, LinksAndLogicDestroyableMixin, ourlib) {
+},{"allex_arrayoperationslowlevellib":26}],12:[function(require,module,exports){
+function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
-  var q = lib.q;
+  var q = lib.q,
+    LinksAndLogicDestroyableMixin = mixins.LinksAndLogicDestroyableMixin;
 
   function DescriptorHandler (descriptor) {
     LinksAndLogicDestroyableMixin.call(this);
@@ -811,7 +802,7 @@ function createDescriptorHandler (lib, LinksAndLogicDestroyableMixin, ourlib) {
 module.exports = createDescriptorHandler;
 
 },{}],13:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -826,20 +817,33 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
     q = lib.q,
-    qlib = lib.qlib;
+    qlib = lib.qlib,
+    jobs = require('./jobs')(lib, jobondestroyablelib, Resources),
+    ElementLoaderJob = jobs.ElementLoaderJob,
+    ElementUnloaderJob = jobs.ElementUnloaderJob;
+
+  /**
+   * The base class for all descendant Element classes.
+   *
+   * @class
+   * @memberof allex_applib
+   */
 
   function BasicElement (id, options) {
-    console.log('new', this.constructor.name, id);
+    //console.log('new', this.constructor.name, id);
     BasicParent.call(this);
     Child.call(this);
     Gettable.call(this);
     Configurable.call(this, options);
     LinksAndLogicDestroyableMixin.call(this);
 
+    this.jobs = new qlib.JobCollection();
     this.id = id;
     this.actual = null;
     this._link = null;
-    this.resources = null;
+    this.resourcedescs = null;
+    this.resourcereqs = null;
+    this.resourcealiases = null;
     this._loading_promise = null;
     this.loadEvent = new lib.HookCollection();
     this.loading = false;
@@ -855,7 +859,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   LinksAndLogicDestroyableMixin.addMethods(BasicElement);
 
   BasicElement.prototype.__cleanUp = function () {
-    console.log(this.constructor.name, this.id, 'dying');
+    //console.log(this.constructor.name, this.id, 'dying');
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -872,14 +876,20 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._loading_promise = null;
     this.initialized = null;
     this.loading = null;
-    if (this.resources) {
-      this.resources.destroy();
+    if (this.resourcealiases) {
+      this.resourcealiases.destroy();
     }
-    this.resources = null;
+    this.resourcealiases = null;
+    this.resourcereqs = null;
+    this.resourcedescs = null;
     if (this._link) this._link.destroy();
 
     this.actual = null;
     this.id = null;
+    if (this.jobs) {
+      this.jobs.destroy();
+    }
+    this.jobs = null;
 
     LinksAndLogicDestroyableMixin.prototype.destroy.call(this);
     Configurable.prototype.__cleanUp.call(this);
@@ -893,13 +903,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   Configurable.addMethods(BasicElement);
 
   BasicElement.prototype.initialize = function () {
-    var subelements = this.getConfigVal('elements');
-
+    var subelements;
+    preInitialize(this);
     this.actual = this.getConfigVal('actual') || false;
     handleLoading(this, this.getConfigVal('actual'));
+    subelements = this.getConfigVal('elements');
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
+    postInitialize(this);
     this.fireInitializationDone();
   };
 
@@ -917,6 +929,29 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       }
       be.onUnloaded();
     }
+  };
+
+  function preInitialize (elem) {
+    traverseMethodNames(elem, elem.preInitializationMethodNames);
+  }
+
+  function postInitialize (elem) {
+    traverseMethodNames(elem, elem.postInitializationMethodNames);
+  }
+
+  function traverseMethodNames (elem, methodnames) {
+    if (!lib.isArray(methodnames)) {
+      return;
+    }
+    methodnames.forEach(applier.bind(null, elem));
+    elem = null;
+  }
+
+  function applier (elem, methodname) {
+    if (!lib.isFunction(elem[methodname])) {
+      throw new Error(methodname+' is not a name of a method of '+elem.constructor.name);
+    }
+    elem[methodname]();
   }
 
   BasicElement.prototype.fireInitializationDone = function () {
@@ -946,28 +981,12 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return true;
   };
 
-  function getResourceAndCheckLoad (loadEvent, getResource, promises, item) {
-    //promises.push (item.load());
-    var p = item.load();
-    p.done(null, null, loadEvent.fire.bind(loadEvent));
-    promises.push (p);
-  }
-
   BasicElement.prototype.load = function () {
-    var resources = this.resources;
-    if (!resources) return q.resolve('ok');
-    var promises = [];
-    resources.traverse (getResourceAndCheckLoad.bind(null, this.loadEvent, Resources.getResource, promises));
-    return q.all(promises);
+    return this.jobs.run('.', new ElementLoaderJob(this));
   };
 
-  function unloadResource (el, resource, name) {
-    resource.unload();
-  }
-
   BasicElement.prototype.unload = function () {
-    if (!this.resources) return;
-    this.resources.traverse (unloadResource.bind(null, this));
+    return this.jobs.run('.', new ElementUnloaderJob(this));
   };
 
   BasicElement.prototype.onLoaded = function () {
@@ -987,9 +1006,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.onLoadProgress = lib.dummyFunc;
 
   BasicElement.prototype.childChanged = function (el, name, value) {
+    var icac;
     if ('actual' === name && value) {
-      this.set('actual', true);
-      return; ///this one will emmit childChanged ....
+      icac = this.getConfigVal('ignorechildactualchange');
+      if (!icac) {
+        this.set('actual', true); ///this will emit childChanged ....
+      }
+      if (lib.isArray(icac) && icac.indexOf(el.id)<0) {
+        this.set('actual', true); ///this will emit childChanged ....
+      }
+      return;
     }
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
@@ -997,21 +1023,47 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   BasicElement.prototype.addAppLink = lib.dummyFunc;
 
+  function realResourceNameFinder(targetname, result, resourcename) {
+    if (targetname===resourcename) {
+      return targetname;
+    }
+    if (targetname===resourcename.alias) {
+      return resourcename.resource;
+    }
+    return result;
+  }
   BasicElement.prototype.getResource = function (name) {
-    return this.resources ? this.resources.get(name) : null;
+    return Resources.getResource(this.realResourceName(name));
+  };
+  BasicElement.prototype.realResourceName = function (name) {
+    var ret;
+    if (this.resourcealiases) {
+      ret = this.resourcealiases.get(name);
+      if (ret) {
+        return ret;
+      }
+    }
+    return name;
   };
 
   BasicElement.prototype.updateResource = function (resource){ //resource : string or hash
-    prepareResource (this, resource);
+    if (resource && lib.isString(resource.alias) && lib.isString(resource.alias)) {
+      if (!this.resourcealiases) {
+        this.resourcealiases = new lib.Map();
+      }
+      this.resourcealiases.replace(resource.alias, resource.resource)
+    }
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
     PrePreProcessor.process(desc);
     PreProcessor.process(desc);
-    executeModifiers (desc);
+    executeModifiers (true, desc);
     var el = elementFactory(desc);
     after_ctor(el);
-    prepareResources(el, desc.requires);
+    el.resourcedescs = desc ? (desc.resources||[]) : [];
+    el.resourcereqs = desc ? (desc.requires||[]) : [];
+    //prepareResources(el, desc.requires);
     if ('actual' in desc) {
       console.error(desc);
       throw new Error('actual has to be in "options"');
@@ -1022,14 +1074,17 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
   }
 
+  /*
   function prepareResources (el, requires) {
     if (!requires || !requires.length || !lib.isArray(requires)) return;
     requires.forEach (prepareResource.bind(null, el));
   };
+  */
 
+  /*
   function prepareResource (el, resource) {
-    if (!el.resources) {
-      el.resources = new lib.Map();
+    if (!el.resourcereqs) {
+      el.resourcereqs = new lib.Map();
     }
     var resid, resalias;
     if (lib.isString(resource)) {
@@ -1039,8 +1094,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       resid = resource.resource;
       resalias = resource.alias;
     }
-    el.resources.replace(resalias, Resources.getResource(resid));
+    el.resourcereqs.replace(resalias, Resources.getResource(resid));
   }
+  */
 
 
   BasicElement.prototype._addHook = function (name) {
@@ -1094,17 +1150,20 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     hook = null;
   };
 
+  BasicElement.prototype.preInitializationMethodNames = [];
+  BasicElement.prototype.postInitializationMethodNames = [];
+
   return BasicElement;
 }
 
 module.exports = createBasicElement;
 
-},{}],14:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
+},{"./jobs":17}],14:[function(require,module,exports){
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor, jobondestroyablelib) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib);
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -1136,7 +1195,167 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
 module.exports = createElements;
 
 },{"./basicelementcreator.js":13}],15:[function(require,module,exports){
-function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
+function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
+  'use strict';
+
+  var q = lib.q,
+    qlib = lib.qlib;
+
+  function ElementLoaderJob (el, defer) {
+    JobOnDestroyable.call (this, el, defer);
+  }
+  lib.inherit(ElementLoaderJob, JobOnDestroyable);
+  ElementLoaderJob.prototype.destroy = function () {
+    JobOnDestroyable.prototype.destroy.call(this);
+  };
+  ElementLoaderJob.prototype.resolve = function (thingy) {
+    this.fireLoadEvent(true);
+    JobOnDestroyable.prototype.resolve.call(this, thingy);
+  };
+  ElementLoaderJob.prototype.go = function () {
+    var ok = this.okToGo(), resreqs, resdescs, promises, p;
+    if (!ok.ok) {
+      return ok.val;
+    }
+    promises = [];
+    resreqs = this.destroyable.resourcereqs;
+    resdescs = this.destroyable.resourcedescs;
+    this.destroyable.resourcereqs = null;
+    this.destroyable.resourcedescs = null;
+    
+    if (lib.isArray(resreqs)) {
+      promises.push.apply(promises, resreqs.map(this.getResource.bind(this)));
+    }
+    if (lib.isArray(resdescs)) {
+      promises.push.apply(promises, resdescs.map(this.loadResourceParams.bind(this)));
+    }
+    p = q.all(promises);
+    qlib.promise2defer(p, this);
+    return ok.val;
+  };
+
+  ElementLoaderJob.prototype.getResource = function (resourcename) {
+    var pktp = this.peekToProceed(), resourceid, p;
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    resourceid = resourcename.resource || resourcename;
+    console.log('will waitForResource', resourceid); 
+    p = Resources.waitForResource(resourceid).then(resourceLoader);
+    p.then(this.doUpdateResource.bind(this, resourcename), null, this.fireLoadEvent.bind(this));
+    return p;
+  };
+
+  ElementLoaderJob.prototype.loadResourceParams = function (resourcename) {
+    var pktp = this.peekToProceed();
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    console.log('loadResource?', resourcename);
+    Resources.loadResourceParams(resourcename);
+    return q({});
+  };
+
+  ElementLoaderJob.prototype.doUpdateResource = function (resourcename) {
+    var pktp = this.peekToProceed();
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    this.destroyable.updateResource(resourcename);
+  };
+
+  ElementLoaderJob.prototype.fireLoadEvent = function () {
+    var pktp = this.peekToProceed();
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    this.destroyable.loadEvent.fire.apply(this.destroyable.loadEvent, arguments);
+  };
+
+
+  function resourceLoader (resource) {
+    console.log('got resource', resource, 'will load it');
+    return resource.load().then(qlib.returner(resource));
+  }
+
+  return ElementLoaderJob;
+}
+
+module.exports = createElementLoaderJob;
+
+},{}],16:[function(require,module,exports){
+function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
+  'use strict';
+
+  var q = lib.q,
+    qlib = lib.qlib;
+
+  function ElementUnloaderJob (el, defer) {
+    JobOnDestroyable.call (this, el, defer);
+  }
+  lib.inherit(ElementUnloaderJob, JobOnDestroyable);
+  ElementUnloaderJob.prototype.go = function () {
+    var ok = this.okToGo();
+    if (!ok.ok) {
+      return ok.val;
+    }
+    var promises = lib.isArray(this.destroyable.resourcereqs)
+      ?
+      this.destroyable.resourcereqs.map(this.unloadResourceReq.bind(this))
+      :
+      [];
+    if (lib.isArray(this.destroyable.resources)) {
+      promises.concat(this.destroyable.resources.map(this.unloadResource.bind(this)));
+    }
+    qlib.promise2defer(q.all(promises), this);
+    return ok.val;
+  };
+
+  ElementUnloaderJob.prototype.unloadResourceReq = function (resourcename) {
+    if (!this.peekToProceed()) {
+      return q(null);
+    }
+    var resource = Resources.get(resourcename.resource || resourcename);
+    if (resource) {
+      resource.unload();
+    }
+    return q(true);
+  };
+
+  ElementUnloaderJob.prototype.unloadResource = function (resourcename) {
+    console.log('how to unloadResource', resourcename, '?');
+    throw new Error('blah, sort this out');
+  };
+
+  ElementUnloaderJob.prototype.fireLoadEvent = function () {
+    if (!this.peekToProceed()) {
+      return;
+    }
+    this.destroyable.loadEvent.fire.apply(this.destroyable, arguments);
+  };
+
+  return ElementUnloaderJob;
+}
+
+module.exports = createElementUnloaderJob;
+
+},{}],17:[function(require,module,exports){
+function createElementJobs (lib, jobondestroyablelib, Resources) {
+  'use strict';
+
+  var JobOnDestroyable = jobondestroyablelib.JobOnDestroyable;
+
+  return {
+    ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources),
+    ElementUnloaderJob : require('./elementunloadercreator')(lib, JobOnDestroyable, Resources)
+  };
+
+}
+
+module.exports = createElementJobs;
+
+},{"./elementloadercreator":15,"./elementunloadercreator":16}],18:[function(require,module,exports){
+function libCreator (execlib, Linker, jobondestroyablelib, Hierarchy, environmentlib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -1147,17 +1366,16 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
     App : null
   },
     lib = execlib.lib,
-    Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
-    LinksAndLogicDestroyableMixin = require('./mixins/linksandlogicdestroyablemixincreator')(lib),
-    BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
-    DescriptorHandler = require('./descriptorhandlercreator')(lib, LinksAndLogicDestroyableMixin, RESULT),
+    mixins = require('./mixins')(lib),
+    BasicParent = require('./abstractions/basicparentcreator')(lib, Hierarchy),
+    DescriptorHandler = require('./descriptorhandlercreator')(lib, mixins, RESULT),
     Resources = require('./resources')(lib),
     misc = require('./misc')(lib),
-    Modifier = require('./modifiers')(execlib, misc),
-    preProcessingRegistryLib = require('./preprocessingregistry')(lib),
+    Modifier = require('./modifiers')(execlib, mixins, misc),
+    preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessors, PreProcessors),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, jobondestroyablelib),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors, jobondestroyablelib),
     descriptorApi = require('./descriptorapi')(lib);
 
@@ -1233,6 +1451,7 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
 
   Elements.registerElementType ('BasicElement', Elements.BasicElement);
 
+  RESULT.mixins = mixins;
   RESULT.DescriptorHandler = DescriptorHandler;
   /**
    * @function
@@ -1335,12 +1554,19 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
   RESULT.descriptorApi = descriptorApi;
   RESULT.bootstrap = bootstrap;
 
+  RESULT.BasicProcessor.prototype.firePreprocessor = function (name, config, desc) {
+    preProcessingRegistryLib._doProcess(PreProcessors, desc, config, name);
+  };
+  RESULT.BasicProcessor.prototype.firePrePreprocessor = function (name, config, desc) {
+    preProcessingRegistryLib._doProcess(PrePreProcessors, desc, config, name);
+  };
+
   return RESULT;
 }
 
 module.exports = libCreator;
 
-},{"./abstractions/cBasicParent":1,"./app":6,"./descriptorapi":11,"./descriptorhandlercreator":12,"./elements":14,"./misc":16,"./mixins/linksandlogicdestroyablemixincreator":17,"./modifiers":18,"./preprocessingregistry":28,"./preprocessors":35,"./resources":36,"allex_hierarchymixinslowlevellib":26}],16:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./descriptorapi":11,"./descriptorhandlercreator":12,"./elements":14,"./misc":19,"./mixins":22,"./modifiers":25,"./preprocessingregistry":28,"./preprocessors":35,"./resources":36}],19:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -1483,7 +1709,214 @@ function createMisc (lib) {
 
 module.exports = createMisc;
 
-},{}],17:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
+function createDataElementMixin (lib) {
+  'use strict';
+
+  var q = lib.q;
+
+  function DataElementMixIn () {
+    this.data = null;
+    this.busy = false;
+  }
+
+  DataElementMixIn.prototype.__cleanUp = function () {
+    this.data = null;
+    this.busy = null;
+  };
+
+  DataElementMixIn.prototype.preInitializeData = function () {
+    //this.data = null;
+    this.set('data', null);
+  };
+  DataElementMixIn.prototype.postInitializeData = function () {
+    var data = this.getConfigVal('data');
+    if (lib.isVal(data)) {
+      this.set('data', data);
+    }
+  };
+
+  DataElementMixIn.prototype.set_data = function (data) {
+    var f;
+    this.tryDataMarkup(data);
+    f = this.getConfigVal('dataHandler');
+    if (lib.isFunction(f)) return f(this.$element, data);
+
+    if (this.data === data) return false;
+    this.data = data;
+    return true;
+  };
+
+  DataElementMixIn.prototype.hasDataChanged = function (ret) {
+    return lib.isUndef(ret) || ret === true;
+  };
+
+  DataElementMixIn.prototype.updateHashField = function (name, value) {
+    var val = {};
+    val[name] = value;
+    this.set('data', lib.extend ({}, this.get('data'), val));
+  };
+
+  DataElementMixIn.prototype.updateArrayElement = function (index, value) {
+    var old = this.get('data'),
+      n = old ? old.slice() : [];
+
+    n[index] = value;
+    this.set('data', n);
+  };
+
+  DataElementMixIn.prototype.set_busy = function (val) {
+    this.busy = val;
+    console.log(this.get('id'), 'reported busy', val);
+  };
+
+  DataElementMixIn.prototype.tryDataMarkup = function (data) {
+    var dm, m;
+    if (!this.$element) {
+      return;
+    }
+    dm = this.getConfigVal('data_markup');
+    if (!dm) {
+      return;
+    }
+    m = this.produceDataMarkup(dm, data);
+    this.$element.html(m);
+    this.__children.traverse(function (c) {c.initialize();});
+    //this.$element.html(this.produceDataMarkup.bind(this, dm, data));
+  };
+
+  var _dmre = new RegExp('{{(.*?)}}', 'gm');
+  DataElementMixIn.prototype.produceDataMarkup = function (dm, item) {
+    var m;
+    if (lib.isArray(item)) {
+      return item.map(this.produceDataMarkup.bind(this, dm)).join(' ');
+    }
+    if (!lib.isString(dm)) {
+      return '';
+    }
+    return dm.replace(_dmre, this.doubleBracesSubstituter.bind(this, item));
+  }
+  DataElementMixIn.prototype.doubleBracesSubstituter = function (item, ignoretotalstr, str) {
+    var ret;
+    try {
+      ret = pretty(eval(str));
+    }
+    catch (ignore) {
+      ret = '';
+    }
+    return ret;
+  }
+  function pretty (thingy) {
+    if (!lib.isVal(thingy)) {
+      return thingy;
+    }
+    if (lib.isNumber(thingy)) {
+      return thingy;
+    }
+    if (lib.isString(thingy)) {
+      return thingy;
+    }
+    if (lib.isBoolean(thingy)) {
+      return thingy;
+    }
+    return JSON.stringify(thingy);
+  }
+
+  DataElementMixIn.addMethods = function (chld) {
+    lib.inheritMethods (chld, DataElementMixIn
+      ,'preInitializeData'
+      ,'postInitializeData'
+      ,'set_data'
+      ,'updateHashField'
+      ,'updateArrayElement'
+      ,'hasDataChanged'
+      ,'set_busy'
+      ,'tryDataMarkup'
+      ,'produceDataMarkup'
+      ,'doubleBracesSubstituter'
+    );
+  };
+
+  return DataElementMixIn;
+}
+
+module.exports = createDataElementMixin;
+
+},{}],21:[function(require,module,exports){
+function createDataElementFollowerMixin (lib) {
+  'use strict';
+
+  function DataElementFollowerMixin () {
+    this.datamaster = null;
+    this.masterDataListener = null;
+  }
+  DataElementFollowerMixin.prototype.destroy = function () {
+    this.purgeDataMaster();
+  };
+  DataElementFollowerMixin.prototype.purgeDataMaster = function () {
+    if (this.masterDataListener) {
+      this.masterDataListener.destroy();
+    }
+    this.masterDataListener = null;
+    this.datamaster = null;
+  };
+  DataElementFollowerMixin.prototype.startFollowingDataOn = function (dataemitter) {
+    this.purgeDataMaster();
+    if (!lib.isFunction(dataemitter.attachListener)) {
+      console.warn('Method named "attachListener" was not found on dataemitter');
+      return;
+    }
+    this.masterDataListener = dataemitter.attachListener('changed', 'data', this.onMasterDataChanged.bind(this));
+    if (dataemitter.destroyed && (dataemitter.destroyed instanceof lib.HookCollection)) {
+      dataemitter.destroyed.attachForSingleShot(this.purgeDataMaster.bind(this));
+    }
+  };
+  DataElementFollowerMixin.prototype.startListeningToParentData = function () {
+    this.startFollowingDataOn(this.__parent);
+  };
+  DataElementFollowerMixin.prototype.onMasterDataChanged = function (data) {
+    var onMasterDataChanged = this.getConfigVal('onMasterDataChanged');
+    if (lib.isFunction(onMasterDataChanged)) {
+      onMasterDataChanged(this, data);
+    }
+  };
+  DataElementFollowerMixin.prototype.set_datamaster = function (datamaster) {
+    if (this.datamaster === datamaster) {
+      return false;
+    }
+    this.startFollowingDataOn(datamaster);
+    return true;
+  };
+  DataElementFollowerMixin.addMethods = function (klass) {
+    lib.inheritMethods(klass, DataElementFollowerMixin
+      ,'purgeDataMaster'
+      ,'startFollowingDataOn'
+      ,'startListeningToParentData'
+      ,'onMasterDataChanged'
+      ,'set_datamaster'
+    );
+  };
+
+  return DataElementFollowerMixin;
+}
+
+module.exports = createDataElementFollowerMixin;
+
+},{}],22:[function(require,module,exports){
+function createMixins (lib) {
+  'use strict';
+
+  return {
+    LinksAndLogicDestroyableMixin: require('./linksandlogicdestroyablecreator')(lib),
+    NeededConfigurationNamesMixin: require('./neededconfigurationnamescreator')(lib),
+    DataElementMixin: require('./dataelementcreator')(lib),
+    DataElementFollowerMixin: require('./dataelementfollowercreator')(lib)
+  };
+}
+
+module.exports = createMixins;
+
+},{"./dataelementcreator":20,"./dataelementfollowercreator":21,"./linksandlogicdestroyablecreator":23,"./neededconfigurationnamescreator":24}],23:[function(require,module,exports){
 function createLinksAndLogicDestroyableMixin (lib) {
   'use strict';
 
@@ -1594,13 +2027,56 @@ function createLinksAndLogicDestroyableMixin (lib) {
 
 module.exports = createLinksAndLogicDestroyableMixin;
 
-},{}],18:[function(require,module,exports){
-function createModifiers (execlib, misc) {
+},{}],24:[function(require,module,exports){
+function createNeededConfigurationNamesMixin (lib) {
+  'use strict';
+
+  function NeededConfigurationNamesMixin () {
+  }
+  NeededConfigurationNamesMixin.prototype.destroy = lib.dummyFunc;
+  NeededConfigurationNamesMixin.prototype.checkNeededConfigurationNames = function (config) {
+    if (this.neededConfigurationNames) {
+      if (lib.isArray(config)) {
+        config.forEach(checkNeededConfigurationNames.bind(null, this.constructor.name, this.neededConfigurationNames));
+      } else {
+        checkNeededConfigurationNames(this.constructor.name, this.neededConfigurationNames, config);
+      }
+    }
+  };
+  NeededConfigurationNamesMixin.addMethods = function (klass) {
+    lib.inheritMethods(klass, NeededConfigurationNamesMixin,
+      'checkNeededConfigurationNames'
+    );
+  };
+
+  function checkNeededConfigurationNames (ctorname, names, config) {
+    var i, name;
+    if (!lib.isArray(names)) {
+      return;
+    }
+    if (!(config && 'object' === typeof config)) {
+      return;
+    }
+    for (i=0; i<names.length; i++) {
+      if (!(names[i] in config)) {
+        throw new Error('The configuration provided to an instance of '+ctorname+' has to have a property named '+names[i]);
+      }
+    }
+  }
+
+  return NeededConfigurationNamesMixin;
+}
+
+module.exports = createNeededConfigurationNamesMixin;
+
+},{}],25:[function(require,module,exports){
+function createModifiers (execlib, mixins, misc) {
   'use strict';
 
   var lib = execlib.lib, 
     modifiers = new lib.Map (),
-    Configurable = lib.Configurable;
+    Configurable = lib.Configurable,
+    NeededConfigurationNamesMixin = mixins.NeededConfigurationNamesMixin;
 
   /**
    * @class
@@ -1616,7 +2092,8 @@ function createModifiers (execlib, misc) {
    * - `doProcess(name, options, links, logic, resources)` - your job is done here
    * - `DEFAULT_CONFIG()` - you have to return the default configuration, if none is given
    *
-   * Optionally, you may override the `ALLOWED_ON()` method, to specify the names of Element types 
+   * Optionally, you may set the `ALLOWED_ON` property of your class (static),
+   * to specify the names of Element types 
    * your inherited Modifier class will run on.
    *
    * ### Register
@@ -1697,14 +2174,22 @@ function createModifiers (execlib, misc) {
 
   function BasicModifier (options) {
     Configurable.call(this, options);
+    NeededConfigurationNamesMixin.call(this);
+    this.checkNeededConfigurationNames(options);
   }
   lib.inherit (BasicModifier, Configurable);
+  NeededConfigurationNamesMixin.addMethods(BasicModifier);
 
   BasicModifier.prototype.destroy = function () {
+    NeededConfigurationNamesMixin.prototype.destroy.call(this);
     Configurable.prototype.destroy.call(this);
   };
 
-  BasicModifier.prototype.process = function (element) {
+  BasicModifier.prototype.processAppDescriptor = function (element) {
+    this.doProcess(element.name, element, element.links, element.logic, element.resources);
+  };
+
+  BasicModifier.prototype.processElementDescriptor = function (element) {
     this.doProcess(element.name, element.options, element.links, element.logic, element.resources);
   };
 
@@ -1744,7 +2229,7 @@ function createModifiers (execlib, misc) {
     return modifiers.get (name);
   }
 
-  function executeModifier (name, options, element) {
+  function executeModifier (iselementdescriptor, name, options, element) {
     var ctor = modifiers.get(name);
     if (!ctor) throw new Error('Failed to load modifier: '+name);
 
@@ -1752,21 +2237,24 @@ function createModifiers (execlib, misc) {
 
     var instance = new ctor (options);
 
-    instance.process(element);
+    iselementdescriptor ? instance.processElementDescriptor(element) : instance.processAppDescriptor(element);
     instance.destroy();
     instance = null;
   }
 
-  function executeModifiers (element) {
+  function executeModifiers (iselementdescriptor, element) {
+    if (!lib.isBoolean(iselementdescriptor)) {
+      throw new Error('first parameter of executeModifiers has to be a boolean (iselementdescriptor)');
+    }
     if (!element.modifiers) return;
 
     misc.initAll(element);
 
     for (var i = 0; i < element.modifiers.length; i++){
       if (lib.isString(element.modifiers[i])) {
-        executeModifier (element.modifiers[i], null, element);
+        executeModifier (iselementdescriptor, element.modifiers[i], null, element);
       }else{
-        executeModifier (element.modifiers[i].name, element.modifiers[i].options, element);
+        executeModifier (iselementdescriptor, element.modifiers[i].name, element.modifiers[i].options, element);
       }
     }
   }
@@ -1781,7 +2269,7 @@ function createModifiers (execlib, misc) {
 
 module.exports = createModifiers;
 
-},{}],19:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 module.exports = function createArryOperations(extend, readPropertyFromDotDelimitedString, isFunction, Map, AllexJSONizingError) {
   function union(a1, a2) {
     var ret = a1.slice();
@@ -2111,214 +2599,8 @@ module.exports = function createArryOperations(extend, readPropertyFromDotDelimi
   return ret;
 }; 
 
-},{}],20:[function(require,module,exports){
-module.exports = function (inherit, DestroyableChild){
-  'use strict';
-  function Child(parnt){
-    this.__parntChangedListener = null;
-    DestroyableChild.call(this,parnt);
-  }
-  inherit(Child,DestroyableChild);
-  Child.prototype.__cleanUp = function(){
-    if (this.__parntChangedListener) {
-      this.__parntChangedListener.destroy();
-    }
-    this.__parntChangedListener = null;
-    DestroyableChild.prototype.__cleanUp.call(this);
-  };
-  return Child;
-};
-
-},{}],21:[function(require,module,exports){
-module.exports = function (inherit, StaticChild){
-  'use strict';
-
-  function DestroyableChild(parnt){
-    this.__parntDestroyedListener = null;
-    StaticChild.call(this,parnt);
-  }
-  inherit(DestroyableChild,StaticChild);
-  DestroyableChild.prototype.__cleanUp = function(){
-    if (this.__parntDestroyedListener) {
-      this.__parntDestroyedListener.destroy();
-    }
-    this.__parntDestroyedListener = null;
-    StaticChild.prototype.__cleanUp.call(this);
-  };
-  return DestroyableChild;
-};
-
-},{}],22:[function(require,module,exports){
-module.exports = function (inherit,StaticParent) {
-  'use strict';
-
-  function DestroyableParent(){
-    StaticParent.call(this);
-  }
-  inherit(DestroyableParent,StaticParent);
-  DestroyableParent.prototype.addChild = function(child){
-    child = StaticParent.prototype.addChild.call(this,child);
-    child.__parntDestroyedListener = child.attachListener('destroyed',this.removeChild.bind(this,child));
-    return child;
-  };
-  DestroyableParent.prototype.removeChild = function(child){
-    if (child.__parntDestroyedListener) {
-      child.__parntDestroyedListener.destroy();
-    }
-    child.__parntDestroyedListener = null;
-    StaticParent.prototype.removeChild.call(this,child);
-  };
-  return DestroyableParent;
-};
-
-},{}],23:[function(require,module,exports){
-module.exports = function (inherit,DestroyableParent) {
-  'use strict';
-
-  function Parent(){
-    DestroyableParent.call(this);
-  }
-  inherit(Parent,DestroyableParent);
-  Parent.prototype.addChild = function(child){
-    child = DestroyableParent.prototype.addChild.call(this,child);
-    child.__parntChangedListener = child.attachListener('changed',this.childChanged.bind(this,child));
-    return child;
-  };
-  Parent.prototype.removeChild = function(child){
-    if(child.__parntChangedListener){
-      child.__parntChangedListener.destroy();
-    }
-    child.__parntChangedListener = null;
-    DestroyableParent.prototype.removeChild.call(this,child);
-  };
-  return Parent;
-};
-
-},{}],24:[function(require,module,exports){
-module.exports = function () {
-  'use strict';
-  function StaticChild(parnt){
-    this.__childindex = null;
-    this.__parent = null;
-    if(parnt){
-      parnt.addChild(this);
-    }
-  }
-  StaticChild.prototype.set___parent = function(parnt){
-    this.__parent = parnt;
-  };
-  StaticChild.prototype.rootParent = function(){
-    var ret = this.__parent, tempret = ret;
-    while(tempret){
-      tempret = ret.__parent;
-      if(!tempret){
-        return ret;
-      }else{
-        ret = tempret;
-      }
-    }
-    return ret;
-  };
-  StaticChild.prototype.leaveParent = function(){
-    if(this.__parent){
-      this.__parent.removeChild(this);
-    }
-  };
-  StaticChild.prototype.__cleanUp = function(){
-    this.__parent = null;
-    this.__childindex = null;
-  };
-  return StaticChild;
-};
-
-},{}],25:[function(require,module,exports){
-
-function traverseChild(cb, methodname,child,childindex){
-  'use strict';
-  var method = child[methodname];
-  if(method){
-    return method.call(child,cb);
-  }else{
-    cb(child,childindex);
-  }
-}
-
-module.exports = function (DList,get,set) {
-  'use strict';
-  function StaticParent(){
-    this.__children = new DList();
-  }
-  StaticParent.prototype.__cleanUp = function(){
-    this.purge();
-    this.__children.destroy();
-    this.__children = null;
-  };
-
-  StaticParent.prototype.purge = function () {
-    this.__children.traverse(this.destroyChild.bind(this));
-  };
-  StaticParent.prototype.addChild = function(child){
-    var op = get(child,'__parent');
-    if(op){
-      console.trace();
-      throw "Child has parent";
-    }
-    set('__parent',this,child);
-    this.setIndexOnChild(child);
-    return child;
-  };
-  StaticParent.prototype.setIndexOnChild = function(child){
-    child.__childindex = this.__children.push(child);
-  };
-  StaticParent.prototype.destroyChild = function(child){
-    this.removeChild(child);
-    child.destroy();
-  };
-  StaticParent.prototype.removeChild = function(child){
-    this.__children.remove(child.__childindex);
-    child.__childindex = null;
-    set('__parent',null,child);
-  };
-  StaticParent.prototype.traverseChildrenFirst  = function(cb){
-    var r = this.__children.traverse(traverseChild.bind(null,cb,'traverseChildrenFirst'));
-    if(r){
-      cb = null;
-      return r;
-    }
-    r = cb(this,this.__childindex);
-    cb = null;
-    return r;
-  };
-  StaticParent.prototype.traverseChildrenAfter = function(cb){
-    var r = cb(this,this.__childindex);
-    if(r){return r;}
-    r = this.__children.traverse(traverseChild.bind(null,cb,'traverseChildrenAfter'));
-    cb = null;
-    return r;
-  };
-  return StaticParent;
-};
-
-},{}],26:[function(require,module,exports){
-module.exports = function (inherit, DList, Gettable, Settable) {
-  'use strict';
-  var StaticParent = require('./StaticParent')(DList,Gettable.get,Settable.set),
-    StaticChild = require('./StaticChild.js')(),
-    DestroyableChild = require('./DestroyableChild.js')(inherit, StaticChild),
-    DestroyableParent = require('./DestroyableParent.js')(inherit,StaticParent),
-    Parent = require('./Parent')(inherit,DestroyableParent);
-  return {
-    DestroyableChild:DestroyableChild,
-    DestroyableParent:DestroyableParent,
-    Parent:Parent,
-    StaticChild:StaticChild,
-    Child:require('./Child.js')(inherit, DestroyableChild),
-    StaticParent:StaticParent
-  };
-};
-
-},{"./Child.js":20,"./DestroyableChild.js":21,"./DestroyableParent.js":22,"./Parent":23,"./StaticChild.js":24,"./StaticParent":25}],27:[function(require,module,exports){
-function createPreProcessingRegistry (lib) {
+},{}],27:[function(require,module,exports){
+function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
   /**
@@ -2422,8 +2704,14 @@ function createPreProcessingRegistry (lib) {
    *
    */
   function BasicProcessor () {
+    NeededConfigurationNamesMixin.call(this);
     this.config = null;
   } 
+  NeededConfigurationNamesMixin.addMethods(BasicProcessor);
+  BasicProcessor.prototype.destroy = function () {
+    this.config = null;
+    NeededConfigurationNamesMixin.prototype.destroy.call(this);
+  };
   /**
    * @function 
    * @abstract
@@ -2432,9 +2720,21 @@ function createPreProcessingRegistry (lib) {
   BasicProcessor.prototype.process = function (desc) {
     throw new Error('Not implemented');
   };
-  BasicProcessor.prototype.destroy = function () {
-    this.config = null;
-  };
+  /**
+   * @function 
+   * @param {String} name The name of the registered Preprocessor
+   * @param {Object} config The config for the PreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePreprocessor = null;
+  /**
+   * @function 
+   * @param {String} name The name of the registered PrePreprocessor
+   * @param {Object} config The config for the PrePreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePrePreprocessor = null;
+
 
   /**
    * @function
@@ -2445,30 +2745,9 @@ function createPreProcessingRegistry (lib) {
    * from the descriptor.
    */
   BasicProcessor.prototype.configure = function (config) {
-    if (this.neededConfigurationNames) {
-      if (lib.isArray(config)) {
-        config.forEach(checkNeededConfigurationNames.bind(null, this.constructor.name, this.neededConfigurationNames));
-      } else {
-        checkNeededConfigurationNames(this.constructor.name, this.neededConfigurationNames, config);
-      }
-    }
+    this.checkNeededConfigurationNames(config);
     this.config = config;
   };
-
-  function checkNeededConfigurationNames (ctorname, names, config) {
-    var i, name;
-    if (!lib.isArray(names)) {
-      return;
-    }
-    if (!(config && 'object' === typeof config)) {
-      return;
-    }
-    for (i=0; i<names.length; i++) {
-      if (!(names[i] in config)) {
-        throw new Error('The configuration provided to an instance of '+ctorname+' has to have a property named '+names[i]);
-      }
-    }
-  }
 
   BasicProcessor.prototype.isAppDesc = function (desc) {
     return !desc.type;
@@ -2560,21 +2839,23 @@ function createPreProcessingRegistry (lib) {
 
   return {
     PreProcessingRegistryBase: PreProcessingRegistryBase,
-    BasicProcessor: BasicProcessor
+    BasicProcessor: BasicProcessor,
+    _doProcess: _doProcess
   };
 }
 
 module.exports = createPreProcessingRegistry;
 
 },{}],28:[function(require,module,exports){
-function createPreProcessingRegistries (lib) {
+function createPreProcessingRegistries (lib, mixins) {
   'use strict';
 
-  var plib = require('./basecreator')(lib),
+  var plib = require('./basecreator')(lib, mixins.NeededConfigurationNamesMixin),
     BasicProcessor = plib.BasicProcessor,
     RegistryBase = plib.PreProcessingRegistry;
 
   return {
+    _doProcess: plib._doProcess,
     BasicProcessor: BasicProcessor,
     PreProcessors: require('./preprocessingregistrycreator.js')(lib, plib.PreProcessingRegistryBase),
     PrePreProcessors: require('./prepreprocessingregistrycreator')(lib, plib.PreProcessingRegistryBase)
@@ -2595,6 +2876,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
    *
    * @class
    * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
    */
   function PrePreProcessingRegistry () {
     PreProcessingRegistryBase.call(this);
@@ -2631,6 +2913,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
   /**
    * @class
    * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
    * @classdesc
    * Specialization of {@link allex_applib.PreProcessingRegistryBase}
    * that targets the `preprocessors` App/Element descriptor secion.
@@ -2816,6 +3099,12 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
       throw new Error('entity section of the configuration must have a name');
     }
     targetenv = descriptorApi.ensureDescriptorArrayElementByName(desc, 'environments', conf.environment);
+    if (!targetenv.options) {
+      targetenv.options = {};
+    }
+    if (!lib.isArray(targetenv.options[pp.environmentOptionsTarget])) {
+      targetenv.options[pp.environmentOptionsTarget] = [];
+    }
     targetenv.options[pp.environmentOptionsTarget].push(conf.entity);
     if (lib.isArray(pp.appTarget)) {
       pp.appTarget.forEach(putToApp.bind(null, pp, desc, conf));
@@ -2826,8 +3115,11 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
   function putToApp (pp, desc, conf, destdesc) {
     var appobj = lib.extend({}, desc.app, {
       environment: conf.environment
-    });
+    }, conf.app_options);
     appobj[destdesc.objdest] = conf.entity.name;
+    if (!lib.isArray(desc[destdesc.dest])) {
+      desc[destdesc.dest] = [];
+    }
     desc[destdesc.dest].push(appobj);
   }
   /**
@@ -2883,17 +3175,17 @@ module.exports = createPreProcessors;
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
-    ResourceRegistry = new lib.Map (),
+    ResourceRegistry = new lib.DIContainer (),
     ResourceParams = new lib.Map ();
 
   function resourceFactory (app, desc) {
     var ctor, instance, promise;
-    console.log('creating Resource', desc.name||desc.type, 'for', desc.options);
+    console.log('creating Resource', desc.name||desc.type, 'with options', desc.options);
     ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+desc.type));
     instance = new ctor(desc.options, app);
     promise = instance._load(desc.lazy);
-    ResourceRegistry.add (desc.name||desc.type, {instance: instance, promise : promise});
+    ResourceRegistry.register (desc.name||desc.type, {instance: instance, promise : promise});
     return promise;
   }
 
@@ -2968,6 +3260,13 @@ function createResourcesModule (lib) {
     return c ? c.instance : null;
   }
 
+  function afterWait (item) {
+    return q(item ? (item.instance || null) : null);
+  }
+  function waitForResource (name) {
+    return ResourceRegistry.waitFor(name).then(afterWait);
+  }
+
   function destroyResource (name) {
     var c = ResourceRegistry.remove(name);
     if (c) {
@@ -2984,6 +3283,7 @@ function createResourcesModule (lib) {
     resourceFactory : resourceFactory,
     loadResourceParams : loadResourceParams,
     getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    waitForResource: waitForResource,
     destroyResource : destroyResource,
     BasicResourceLoader : BasicResourceLoader,
     traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry),

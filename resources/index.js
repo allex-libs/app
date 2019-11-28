@@ -1,17 +1,17 @@
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
-    ResourceRegistry = new lib.Map (),
+    ResourceRegistry = new lib.DIContainer (),
     ResourceParams = new lib.Map ();
 
   function resourceFactory (app, desc) {
     var ctor, instance, promise;
-    console.log('creating Resource', desc.name||desc.type, 'for', desc.options);
+    console.log('creating Resource', desc.name||desc.type, 'with options', desc.options);
     ctor = ResourceTypeRegistry.get(desc.type);
     if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+desc.type));
     instance = new ctor(desc.options, app);
     promise = instance._load(desc.lazy);
-    ResourceRegistry.add (desc.name||desc.type, {instance: instance, promise : promise});
+    ResourceRegistry.register (desc.name||desc.type, {instance: instance, promise : promise});
     return promise;
   }
 
@@ -86,6 +86,13 @@ function createResourcesModule (lib) {
     return c ? c.instance : null;
   }
 
+  function afterWait (item) {
+    return q(item ? (item.instance || null) : null);
+  }
+  function waitForResource (name) {
+    return ResourceRegistry.waitFor(name).then(afterWait);
+  }
+
   function destroyResource (name) {
     var c = ResourceRegistry.remove(name);
     if (c) {
@@ -102,6 +109,7 @@ function createResourcesModule (lib) {
     resourceFactory : resourceFactory,
     loadResourceParams : loadResourceParams,
     getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    waitForResource: waitForResource,
     destroyResource : destroyResource,
     BasicResourceLoader : BasicResourceLoader,
     traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry),

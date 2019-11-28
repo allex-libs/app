@@ -1,9 +1,10 @@
-function createModifiers (execlib, misc) {
+function createModifiers (execlib, mixins, misc) {
   'use strict';
 
   var lib = execlib.lib, 
     modifiers = new lib.Map (),
-    Configurable = lib.Configurable;
+    Configurable = lib.Configurable,
+    NeededConfigurationNamesMixin = mixins.NeededConfigurationNamesMixin;
 
   /**
    * @class
@@ -19,7 +20,8 @@ function createModifiers (execlib, misc) {
    * - `doProcess(name, options, links, logic, resources)` - your job is done here
    * - `DEFAULT_CONFIG()` - you have to return the default configuration, if none is given
    *
-   * Optionally, you may override the `ALLOWED_ON()` method, to specify the names of Element types 
+   * Optionally, you may set the `ALLOWED_ON` property of your class (static),
+   * to specify the names of Element types 
    * your inherited Modifier class will run on.
    *
    * ### Register
@@ -100,14 +102,22 @@ function createModifiers (execlib, misc) {
 
   function BasicModifier (options) {
     Configurable.call(this, options);
+    NeededConfigurationNamesMixin.call(this);
+    this.checkNeededConfigurationNames(options);
   }
   lib.inherit (BasicModifier, Configurable);
+  NeededConfigurationNamesMixin.addMethods(BasicModifier);
 
   BasicModifier.prototype.destroy = function () {
+    NeededConfigurationNamesMixin.prototype.destroy.call(this);
     Configurable.prototype.destroy.call(this);
   };
 
-  BasicModifier.prototype.process = function (element) {
+  BasicModifier.prototype.processAppDescriptor = function (element) {
+    this.doProcess(element.name, element, element.links, element.logic, element.resources);
+  };
+
+  BasicModifier.prototype.processElementDescriptor = function (element) {
     this.doProcess(element.name, element.options, element.links, element.logic, element.resources);
   };
 
@@ -147,7 +157,7 @@ function createModifiers (execlib, misc) {
     return modifiers.get (name);
   }
 
-  function executeModifier (name, options, element) {
+  function executeModifier (iselementdescriptor, name, options, element) {
     var ctor = modifiers.get(name);
     if (!ctor) throw new Error('Failed to load modifier: '+name);
 
@@ -155,21 +165,24 @@ function createModifiers (execlib, misc) {
 
     var instance = new ctor (options);
 
-    instance.process(element);
+    iselementdescriptor ? instance.processElementDescriptor(element) : instance.processAppDescriptor(element);
     instance.destroy();
     instance = null;
   }
 
-  function executeModifiers (element) {
+  function executeModifiers (iselementdescriptor, element) {
+    if (!lib.isBoolean(iselementdescriptor)) {
+      throw new Error('first parameter of executeModifiers has to be a boolean (iselementdescriptor)');
+    }
     if (!element.modifiers) return;
 
     misc.initAll(element);
 
     for (var i = 0; i < element.modifiers.length; i++){
       if (lib.isString(element.modifiers[i])) {
-        executeModifier (element.modifiers[i], null, element);
+        executeModifier (iselementdescriptor, element.modifiers[i], null, element);
       }else{
-        executeModifier (element.modifiers[i].name, element.modifiers[i].options, element);
+        executeModifier (iselementdescriptor, element.modifiers[i].name, element.modifiers[i].options, element);
       }
     }
   }

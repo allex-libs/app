@@ -1,6 +1,7 @@
-function createDescriptorHandler (lib, LinksAndLogicDestroyableMixin, ourlib) {
+function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
-  var q = lib.q;
+  var q = lib.q,
+    LinksAndLogicDestroyableMixin = mixins.LinksAndLogicDestroyableMixin;
 
   function DescriptorHandler (descriptor) {
     LinksAndLogicDestroyableMixin.call(this);

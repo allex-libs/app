@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -13,20 +13,33 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Gettable = lib.Gettable,
     Configurable = lib.Configurable,
     q = lib.q,
-    qlib = lib.qlib;
+    qlib = lib.qlib,
+    jobs = require('./jobs')(lib, jobondestroyablelib, Resources),
+    ElementLoaderJob = jobs.ElementLoaderJob,
+    ElementUnloaderJob = jobs.ElementUnloaderJob;
+
+  /**
+   * The base class for all descendant Element classes.
+   *
+   * @class
+   * @memberof allex_applib
+   */
 
   function BasicElement (id, options) {
-    console.log('new', this.constructor.name, id);
+    //console.log('new', this.constructor.name, id);
     BasicParent.call(this);
     Child.call(this);
     Gettable.call(this);
     Configurable.call(this, options);
     LinksAndLogicDestroyableMixin.call(this);
 
+    this.jobs = new qlib.JobCollection();
     this.id = id;
     this.actual = null;
     this._link = null;
-    this.resources = null;
+    this.resourcedescs = null;
+    this.resourcereqs = null;
+    this.resourcealiases = null;
     this._loading_promise = null;
     this.loadEvent = new lib.HookCollection();
     this.loading = false;
@@ -42,7 +55,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   LinksAndLogicDestroyableMixin.addMethods(BasicElement);
 
   BasicElement.prototype.__cleanUp = function () {
-    console.log(this.constructor.name, this.id, 'dying');
+    //console.log(this.constructor.name, this.id, 'dying');
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -59,14 +72,20 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._loading_promise = null;
     this.initialized = null;
     this.loading = null;
-    if (this.resources) {
-      this.resources.destroy();
+    if (this.resourcealiases) {
+      this.resourcealiases.destroy();
     }
-    this.resources = null;
+    this.resourcealiases = null;
+    this.resourcereqs = null;
+    this.resourcedescs = null;
     if (this._link) this._link.destroy();
 
     this.actual = null;
     this.id = null;
+    if (this.jobs) {
+      this.jobs.destroy();
+    }
+    this.jobs = null;
 
     LinksAndLogicDestroyableMixin.prototype.destroy.call(this);
     Configurable.prototype.__cleanUp.call(this);
@@ -80,13 +99,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   Configurable.addMethods(BasicElement);
 
   BasicElement.prototype.initialize = function () {
-    var subelements = this.getConfigVal('elements');
-
+    var subelements;
+    preInitialize(this);
     this.actual = this.getConfigVal('actual') || false;
     handleLoading(this, this.getConfigVal('actual'));
+    subelements = this.getConfigVal('elements');
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
+    postInitialize(this);
     this.fireInitializationDone();
   };
 
@@ -104,6 +125,29 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       }
       be.onUnloaded();
     }
+  };
+
+  function preInitialize (elem) {
+    traverseMethodNames(elem, elem.preInitializationMethodNames);
+  }
+
+  function postInitialize (elem) {
+    traverseMethodNames(elem, elem.postInitializationMethodNames);
+  }
+
+  function traverseMethodNames (elem, methodnames) {
+    if (!lib.isArray(methodnames)) {
+      return;
+    }
+    methodnames.forEach(applier.bind(null, elem));
+    elem = null;
+  }
+
+  function applier (elem, methodname) {
+    if (!lib.isFunction(elem[methodname])) {
+      throw new Error(methodname+' is not a name of a method of '+elem.constructor.name);
+    }
+    elem[methodname]();
   }
 
   BasicElement.prototype.fireInitializationDone = function () {
@@ -133,28 +177,12 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return true;
   };
 
-  function getResourceAndCheckLoad (loadEvent, getResource, promises, item) {
-    //promises.push (item.load());
-    var p = item.load();
-    p.done(null, null, loadEvent.fire.bind(loadEvent));
-    promises.push (p);
-  }
-
   BasicElement.prototype.load = function () {
-    var resources = this.resources;
-    if (!resources) return q.resolve('ok');
-    var promises = [];
-    resources.traverse (getResourceAndCheckLoad.bind(null, this.loadEvent, Resources.getResource, promises));
-    return q.all(promises);
+    return this.jobs.run('.', new ElementLoaderJob(this));
   };
 
-  function unloadResource (el, resource, name) {
-    resource.unload();
-  }
-
   BasicElement.prototype.unload = function () {
-    if (!this.resources) return;
-    this.resources.traverse (unloadResource.bind(null, this));
+    return this.jobs.run('.', new ElementUnloaderJob(this));
   };
 
   BasicElement.prototype.onLoaded = function () {
@@ -174,9 +202,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.onLoadProgress = lib.dummyFunc;
 
   BasicElement.prototype.childChanged = function (el, name, value) {
+    var icac;
     if ('actual' === name && value) {
-      this.set('actual', true);
-      return; ///this one will emmit childChanged ....
+      icac = this.getConfigVal('ignorechildactualchange');
+      if (!icac) {
+        this.set('actual', true); ///this will emit childChanged ....
+      }
+      if (lib.isArray(icac) && icac.indexOf(el.id)<0) {
+        this.set('actual', true); ///this will emit childChanged ....
+      }
+      return;
     }
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
@@ -184,21 +219,47 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   BasicElement.prototype.addAppLink = lib.dummyFunc;
 
+  function realResourceNameFinder(targetname, result, resourcename) {
+    if (targetname===resourcename) {
+      return targetname;
+    }
+    if (targetname===resourcename.alias) {
+      return resourcename.resource;
+    }
+    return result;
+  }
   BasicElement.prototype.getResource = function (name) {
-    return this.resources ? this.resources.get(name) : null;
+    return Resources.getResource(this.realResourceName(name));
+  };
+  BasicElement.prototype.realResourceName = function (name) {
+    var ret;
+    if (this.resourcealiases) {
+      ret = this.resourcealiases.get(name);
+      if (ret) {
+        return ret;
+      }
+    }
+    return name;
   };
 
   BasicElement.prototype.updateResource = function (resource){ //resource : string or hash
-    prepareResource (this, resource);
+    if (resource && lib.isString(resource.alias) && lib.isString(resource.alias)) {
+      if (!this.resourcealiases) {
+        this.resourcealiases = new lib.Map();
+      }
+      this.resourcealiases.replace(resource.alias, resource.resource)
+    }
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
     PrePreProcessor.process(desc);
     PreProcessor.process(desc);
-    executeModifiers (desc);
+    executeModifiers (true, desc);
     var el = elementFactory(desc);
     after_ctor(el);
-    prepareResources(el, desc.requires);
+    el.resourcedescs = desc ? (desc.resources||[]) : [];
+    el.resourcereqs = desc ? (desc.requires||[]) : [];
+    //prepareResources(el, desc.requires);
     if ('actual' in desc) {
       console.error(desc);
       throw new Error('actual has to be in "options"');
@@ -209,14 +270,17 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
   }
 
+  /*
   function prepareResources (el, requires) {
     if (!requires || !requires.length || !lib.isArray(requires)) return;
     requires.forEach (prepareResource.bind(null, el));
   };
+  */
 
+  /*
   function prepareResource (el, resource) {
-    if (!el.resources) {
-      el.resources = new lib.Map();
+    if (!el.resourcereqs) {
+      el.resourcereqs = new lib.Map();
     }
     var resid, resalias;
     if (lib.isString(resource)) {
@@ -226,8 +290,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       resid = resource.resource;
       resalias = resource.alias;
     }
-    el.resources.replace(resalias, Resources.getResource(resid));
+    el.resourcereqs.replace(resalias, Resources.getResource(resid));
   }
+  */
 
 
   BasicElement.prototype._addHook = function (name) {
@@ -280,6 +345,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     hook.destroy();
     hook = null;
   };
+
+  BasicElement.prototype.preInitializationMethodNames = [];
+  BasicElement.prototype.postInitializationMethodNames = [];
 
   return BasicElement;
 }

@@ -1,9 +1,9 @@
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib){
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, jobondestroyablelib, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers);
+    joblib = require('./jobs')(lib, jobondestroyablelib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   /**
    * @class

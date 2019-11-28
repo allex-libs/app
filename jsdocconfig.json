@@ -1,6 +1,6 @@
 {
   "source": {
-    "include": [".", "app", "mixins", "preprocessingregistry", "preprocessors"],
+    "include": [".", "app", "elements", "mixins", "preprocessingregistry", "preprocessors"],
     "includePattern": ".+\\js?$"
   },
   "opts": {

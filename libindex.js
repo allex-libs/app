@@ -1,4 +1,4 @@
-function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
+function libCreator (execlib, Linker, jobondestroyablelib, Hierarchy, environmentlib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -9,17 +9,16 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
     App : null
   },
     lib = execlib.lib,
-    Hierarchy = require('allex_hierarchymixinslowlevellib')(lib.inherit, lib.DList, lib.Gettable, lib.Settable),
-    LinksAndLogicDestroyableMixin = require('./mixins/linksandlogicdestroyablemixincreator')(lib),
-    BasicParent = require('./abstractions/cBasicParent')(lib, Hierarchy),
-    DescriptorHandler = require('./descriptorhandlercreator')(lib, LinksAndLogicDestroyableMixin, RESULT),
+    mixins = require('./mixins')(lib),
+    BasicParent = require('./abstractions/basicparentcreator')(lib, Hierarchy),
+    DescriptorHandler = require('./descriptorhandlercreator')(lib, mixins, RESULT),
     Resources = require('./resources')(lib),
     misc = require('./misc')(lib),
-    Modifier = require('./modifiers')(execlib, misc),
-    preProcessingRegistryLib = require('./preprocessingregistry')(lib),
+    Modifier = require('./modifiers')(execlib, mixins, misc),
+    preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessors, PreProcessors),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, jobondestroyablelib),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors, jobondestroyablelib),
     descriptorApi = require('./descriptorapi')(lib);
 
@@ -95,6 +94,7 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
 
   Elements.registerElementType ('BasicElement', Elements.BasicElement);
 
+  RESULT.mixins = mixins;
   RESULT.DescriptorHandler = DescriptorHandler;
   /**
    * @function
@@ -196,6 +196,13 @@ function libCreator (execlib, Linker, jobondestroyablelib, environmentlib) {
   RESULT.misc = misc;
   RESULT.descriptorApi = descriptorApi;
   RESULT.bootstrap = bootstrap;
+
+  RESULT.BasicProcessor.prototype.firePreprocessor = function (name, config, desc) {
+    preProcessingRegistryLib._doProcess(PreProcessors, desc, config, name);
+  };
+  RESULT.BasicProcessor.prototype.firePrePreprocessor = function (name, config, desc) {
+    preProcessingRegistryLib._doProcess(PrePreProcessors, desc, config, name);
+  };
 
   return RESULT;
 }

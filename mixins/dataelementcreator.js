@@ -1,0 +1,131 @@
+function createDataElementMixin (lib) {
+  'use strict';
+
+  var q = lib.q;
+
+  function DataElementMixIn () {
+    this.data = null;
+    this.busy = false;
+  }
+
+  DataElementMixIn.prototype.__cleanUp = function () {
+    this.data = null;
+    this.busy = null;
+  };
+
+  DataElementMixIn.prototype.preInitializeData = function () {
+    //this.data = null;
+    this.set('data', null);
+  };
+  DataElementMixIn.prototype.postInitializeData = function () {
+    var data = this.getConfigVal('data');
+    if (lib.isVal(data)) {
+      this.set('data', data);
+    }
+  };
+
+  DataElementMixIn.prototype.set_data = function (data) {
+    var f;
+    this.tryDataMarkup(data);
+    f = this.getConfigVal('dataHandler');
+    if (lib.isFunction(f)) return f(this.$element, data);
+
+    if (this.data === data) return false;
+    this.data = data;
+    return true;
+  };
+
+  DataElementMixIn.prototype.hasDataChanged = function (ret) {
+    return lib.isUndef(ret) || ret === true;
+  };
+
+  DataElementMixIn.prototype.updateHashField = function (name, value) {
+    var val = {};
+    val[name] = value;
+    this.set('data', lib.extend ({}, this.get('data'), val));
+  };
+
+  DataElementMixIn.prototype.updateArrayElement = function (index, value) {
+    var old = this.get('data'),
+      n = old ? old.slice() : [];
+
+    n[index] = value;
+    this.set('data', n);
+  };
+
+  DataElementMixIn.prototype.set_busy = function (val) {
+    this.busy = val;
+    console.log(this.get('id'), 'reported busy', val);
+  };
+
+  DataElementMixIn.prototype.tryDataMarkup = function (data) {
+    var dm, m;
+    if (!this.$element) {
+      return;
+    }
+    dm = this.getConfigVal('data_markup');
+    if (!dm) {
+      return;
+    }
+    m = this.produceDataMarkup(dm, data);
+    this.$element.html(m);
+    this.__children.traverse(function (c) {c.initialize();});
+    //this.$element.html(this.produceDataMarkup.bind(this, dm, data));
+  };
+
+  var _dmre = new RegExp('{{(.*?)}}', 'gm');
+  DataElementMixIn.prototype.produceDataMarkup = function (dm, item) {
+    var m;
+    if (lib.isArray(item)) {
+      return item.map(this.produceDataMarkup.bind(this, dm)).join(' ');
+    }
+    if (!lib.isString(dm)) {
+      return '';
+    }
+    return dm.replace(_dmre, this.doubleBracesSubstituter.bind(this, item));
+  }
+  DataElementMixIn.prototype.doubleBracesSubstituter = function (item, ignoretotalstr, str) {
+    var ret;
+    try {
+      ret = pretty(eval(str));
+    }
+    catch (ignore) {
+      ret = '';
+    }
+    return ret;
+  }
+  function pretty (thingy) {
+    if (!lib.isVal(thingy)) {
+      return thingy;
+    }
+    if (lib.isNumber(thingy)) {
+      return thingy;
+    }
+    if (lib.isString(thingy)) {
+      return thingy;
+    }
+    if (lib.isBoolean(thingy)) {
+      return thingy;
+    }
+    return JSON.stringify(thingy);
+  }
+
+  DataElementMixIn.addMethods = function (chld) {
+    lib.inheritMethods (chld, DataElementMixIn
+      ,'preInitializeData'
+      ,'postInitializeData'
+      ,'set_data'
+      ,'updateHashField'
+      ,'updateArrayElement'
+      ,'hasDataChanged'
+      ,'set_busy'
+      ,'tryDataMarkup'
+      ,'produceDataMarkup'
+      ,'doubleBracesSubstituter'
+    );
+  };
+
+  return DataElementMixIn;
+}
+
+module.exports = createDataElementMixin;

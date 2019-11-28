@@ -4,6 +4,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
   /**
    * @class
    * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
    * @classdesc
    * Specialization of {@link allex_applib.PreProcessingRegistryBase}
    * that targets the `preprocessors` App/Element descriptor secion.

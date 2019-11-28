@@ -49,6 +49,12 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
       throw new Error('entity section of the configuration must have a name');
     }
     targetenv = descriptorApi.ensureDescriptorArrayElementByName(desc, 'environments', conf.environment);
+    if (!targetenv.options) {
+      targetenv.options = {};
+    }
+    if (!lib.isArray(targetenv.options[pp.environmentOptionsTarget])) {
+      targetenv.options[pp.environmentOptionsTarget] = [];
+    }
     targetenv.options[pp.environmentOptionsTarget].push(conf.entity);
     if (lib.isArray(pp.appTarget)) {
       pp.appTarget.forEach(putToApp.bind(null, pp, desc, conf));
@@ -59,8 +65,11 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
   function putToApp (pp, desc, conf, destdesc) {
     var appobj = lib.extend({}, desc.app, {
       environment: conf.environment
-    });
+    }, conf.app_options);
     appobj[destdesc.objdest] = conf.entity.name;
+    if (!lib.isArray(desc[destdesc.dest])) {
+      desc[destdesc.dest] = [];
+    }
     desc[destdesc.dest].push(appobj);
   }
   /**

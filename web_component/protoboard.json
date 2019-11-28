@@ -9,6 +9,15 @@
       "browserified.js"
     ]
   },
+  "dependencies": {
+    "js": [
+      "allex:browser:core",
+      "node_modules/allex_webappwebcomponent/dist/initializator.js",
+      "allex:applinking:lib",
+      "allex:jobondestroyable:lib",
+      "allex:hierarchymixins:lib"
+    ]
+  },
   "protoboard": {
     "role":"web_component",
     "js_doc_filters": "^(src)"

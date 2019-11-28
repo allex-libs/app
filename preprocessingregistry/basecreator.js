@@ -1,4 +1,4 @@
-function createPreProcessingRegistry (lib) {
+function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
   /**
@@ -102,8 +102,14 @@ function createPreProcessingRegistry (lib) {
    *
    */
   function BasicProcessor () {
+    NeededConfigurationNamesMixin.call(this);
     this.config = null;
   } 
+  NeededConfigurationNamesMixin.addMethods(BasicProcessor);
+  BasicProcessor.prototype.destroy = function () {
+    this.config = null;
+    NeededConfigurationNamesMixin.prototype.destroy.call(this);
+  };
   /**
    * @function 
    * @abstract
@@ -112,9 +118,21 @@ function createPreProcessingRegistry (lib) {
   BasicProcessor.prototype.process = function (desc) {
     throw new Error('Not implemented');
   };
-  BasicProcessor.prototype.destroy = function () {
-    this.config = null;
-  };
+  /**
+   * @function 
+   * @param {String} name The name of the registered Preprocessor
+   * @param {Object} config The config for the PreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePreprocessor = null;
+  /**
+   * @function 
+   * @param {String} name The name of the registered PrePreprocessor
+   * @param {Object} config The config for the PrePreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePrePreprocessor = null;
+
 
   /**
    * @function
@@ -125,30 +143,9 @@ function createPreProcessingRegistry (lib) {
    * from the descriptor.
    */
   BasicProcessor.prototype.configure = function (config) {
-    if (this.neededConfigurationNames) {
-      if (lib.isArray(config)) {
-        config.forEach(checkNeededConfigurationNames.bind(null, this.constructor.name, this.neededConfigurationNames));
-      } else {
-        checkNeededConfigurationNames(this.constructor.name, this.neededConfigurationNames, config);
-      }
-    }
+    this.checkNeededConfigurationNames(config);
     this.config = config;
   };
-
-  function checkNeededConfigurationNames (ctorname, names, config) {
-    var i, name;
-    if (!lib.isArray(names)) {
-      return;
-    }
-    if (!(config && 'object' === typeof config)) {
-      return;
-    }
-    for (i=0; i<names.length; i++) {
-      if (!(names[i] in config)) {
-        throw new Error('The configuration provided to an instance of '+ctorname+' has to have a property named '+names[i]);
-      }
-    }
-  }
 
   BasicProcessor.prototype.isAppDesc = function (desc) {
     return !desc.type;
@@ -240,7 +237,8 @@ function createPreProcessingRegistry (lib) {
 
   return {
     PreProcessingRegistryBase: PreProcessingRegistryBase,
-    BasicProcessor: BasicProcessor
+    BasicProcessor: BasicProcessor,
+    _doProcess: _doProcess
   };
 }
 

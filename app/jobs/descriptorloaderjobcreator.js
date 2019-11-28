@@ -1,4 +1,4 @@
-function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, EnvironmentFactoryPromise, BasicElement, executeModifiers) {
+function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environmentFactory, BasicElement, executeModifiers) {
   'use strict';
 
   var q = lib.q,
@@ -6,6 +6,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     Command = require('../commandcreator')(lib),
     FunctionCommand = require('../functioncommandcreator')(lib),
     DataSource = require('../datasourcecreator')(lib, dataSuite);
+
+  //supporting the "no environmentlib" case
 
   function DescriptorLoaderJob (descriptorhandler, app, defer) {
     AppJob.call(this, app, defer);
@@ -35,17 +37,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
     );
 
-    /*
-    EnvironmentFactoryPromise.then(
-      this.loadEnvironments.bind(this)
-    ).then(
+    this.loadEnvironments().then(
       this.handleResources.bind(this)
-    );
-    */
-    EnvironmentFactoryPromise.then(
-      this.loadEnvironments.bind(this)
-    ).then(
-      this.loadElements.bind(this)
     );
 
     return ok.val;
@@ -62,8 +55,8 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     this.onResourcesLoaded();
   };
   DescriptorLoaderJob.prototype.onResourcesLoaded = function () {
-    //return this.loadElements();
-    this.onAllDone();
+    return this.loadElements();
+    //this.onAllDone();
   };
   DescriptorLoaderJob.prototype.loadElements = function () {
     var app;
@@ -71,26 +64,19 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       return;
     }
     app = this.destroyable;
-    executeModifiers(this.descriptorHandler.descriptor);
+    executeModifiers(false, this.descriptorHandler.descriptor);
     if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
       this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
     }
 
-    return EnvironmentFactoryPromise.then(
-      this.produceLinks.bind(this)
-    ).then(
+    this.produceLinks().then(
       this.produceLogic.bind(this)
     ).then(
       this.onElementsLoaded.bind(this)
     );
   };
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
-    EnvironmentFactoryPromise.then(
-//      this.loadEnvironments.bind(this)
-//    ).then(
-      this.handleResources.bind(this)
-    );
-    //this.onAllDone();
+    this.onAllDone();
   };
   DescriptorLoaderJob.prototype.createElement = function (desc) {
     if (!this.okToProceed()) {
@@ -125,23 +111,27 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       this.descriptorHandler.setLogic.bind(this.descriptorHandler)
     );
   };
-  DescriptorLoaderJob.prototype.loadEnvironments = function (factory) {
+  DescriptorLoaderJob.prototype.loadEnvironments = function () {
+    if (!lib.isFunction(environmentFactory)) {
+      console.warn('Environment factory not found. Did you load allex_environmentlib?')
+      return q(true);
+    }
     if (!this.okToProceed()) {
       return;
     }
     if (!lib.isArray(this.descriptorHandler.descriptor.environments)) {
-      return;
+      return q(true);
     }
-    this.descriptorHandler.descriptor.environments.forEach(this.createEnvironment.bind(this, factory));
-    factory = null;
+    this.descriptorHandler.descriptor.environments.forEach(this.createEnvironment.bind(this));
+    return q(true);
   };
-  DescriptorLoaderJob.prototype.createEnvironment = function (factory, envdesc) {
-    console.log('createEnvironment', factory, envdesc);
+  DescriptorLoaderJob.prototype.createEnvironment = function (envdesc) {
+    console.log('createEnvironment', envdesc);
     var env, name;
     if (!this.okToProceed()) {
       return;
     }
-    env = factory(envdesc);
+    env = environmentFactory(envdesc);
     name = envdesc.name;
     this.destroyable.environments.add(name, env);
     this.descriptorHandler.addEnvironmentName(name);
@@ -180,7 +170,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
     if (!e_datasource) {
       e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
       if (!e_datasource)
-        throw new Error('Unable to find datasource '+source_name+' within environment description');
+        console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
     var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
@@ -208,7 +198,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, Environme
       if (!c) {
         c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
         if (!c)
-          throw new Error('Unable to find command '+c_name+' in environment descriptor');
+          console.warn('Unable to find command '+c_name+' in environment descriptor');
       }
       fc = new Command (c_name);
       environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));

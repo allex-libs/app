@@ -9,6 +9,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
    *
    * @class
    * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
    */
   function PrePreProcessingRegistry () {
     PreProcessingRegistryBase.call(this);
