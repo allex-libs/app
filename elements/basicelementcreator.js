@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -14,7 +14,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, jobondestroyablelib, Resources),
+    jobs = require('./jobs')(lib, Resources),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 

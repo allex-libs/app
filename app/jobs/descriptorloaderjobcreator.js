@@ -28,14 +28,20 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       this.resolve(this.descriptorHandler);
       return;
     }
-    lib.traverseShallow (
-      desc.datasources,
-      linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
-    );
-    lib.traverseShallow (
-      desc.commands,
-      linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
-    );
+    try {
+      lib.traverseShallow (
+        desc.datasources,
+        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
+      );
+      lib.traverseShallow (
+        desc.commands,
+        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
+      );
+    } catch(e) {
+      console.error(e);
+      this.reject(e);
+      return ok.val;
+    }
 
     this.loadEnvironments().then(
       this.handleResources.bind(this)
@@ -59,21 +65,24 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     //this.onAllDone();
   };
   DescriptorLoaderJob.prototype.loadElements = function () {
-    var app;
     if (!this.okToProceed()) {
       return;
     }
-    app = this.destroyable;
-    executeModifiers(false, this.descriptorHandler.descriptor);
-    if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
-      this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
-    }
+    try {
+      executeModifiers(false, this.descriptorHandler.descriptor);
+      if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
+        this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
+      }
 
-    this.produceLinks().then(
-      this.produceLogic.bind(this)
-    ).then(
-      this.onElementsLoaded.bind(this)
-    );
+      this.produceLinks().then(
+        this.produceLogic.bind(this)
+      ).then(
+        this.onElementsLoaded.bind(this)
+      );
+    } catch(e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
     this.onAllDone();
@@ -97,19 +106,31 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (!this.okToProceed()) {
       return;
     }
-    var links = this.destroyable._link.produceLinks(this.descriptorHandler.descriptor.links);
-    return links.then(
-      this.descriptorHandler.setLinks.bind(this.descriptorHandler)
-    );
+    var links;
+    try {
+      links = this.destroyable._link.produceLinks(this.descriptorHandler.descriptor.links);
+      return links.then(
+        this.descriptorHandler.setLinks.bind(this.descriptorHandler)
+      );
+    } catch (e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.produceLogic = function () {
     if (!this.okToProceed()) {
       return;
     }
-    var logic = this.destroyable._link.produceLogic(this.descriptorHandler.descriptor.logic);
-    return logic.then(
-      this.descriptorHandler.setLogic.bind(this.descriptorHandler)
-    );
+    var logic;
+    try {
+      logic = this.destroyable._link.produceLogic(this.descriptorHandler.descriptor.logic);
+      return logic.then(
+        this.descriptorHandler.setLogic.bind(this.descriptorHandler)
+      );
+    } catch (e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.loadEnvironments = function () {
     if (!lib.isFunction(environmentFactory)) {

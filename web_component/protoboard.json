@@ -14,7 +14,6 @@
       "allex:browser:core",
       "node_modules/allex_webappwebcomponent/dist/initializator.js",
       "allex:applinking:lib",
-      "allex:jobondestroyable:lib",
       "allex:hierarchymixins:lib"
     ]
   },

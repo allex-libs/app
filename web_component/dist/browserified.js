@@ -85,12 +85,12 @@ function create (lib, Hierarchy) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor){
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, jobondestroyablelib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
+    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   /**
    * @class
@@ -420,18 +420,18 @@ function createCommand (lib) {
 module.exports = createCommand;
 
 },{}],6:[function(require,module,exports){
-function createAppLib (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib) {
+function createAppLib (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor) {
   'use strict';
-  return require('./appcreator')(lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, jobondestroyablelib);
+  return require('./appcreator')(lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor);
 }
 
 module.exports = createAppLib;
 
 },{"./appcreator":2}],7:[function(require,module,exports){
-function createAppJob (lib, jobondestroyablelib) {
+function createAppJob (lib) {
   'use strict';
 
-  var JobOnDestroyableBase = jobondestroyablelib.JobOnDestroyableBase;
+  var JobOnDestroyableBase = lib.qlib.JobOnDestroyableBase;
 
   function AppJob (app, defer) {
     JobOnDestroyableBase.call(this, app, defer);
@@ -481,14 +481,20 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       this.resolve(this.descriptorHandler);
       return;
     }
-    lib.traverseShallow (
-      desc.datasources,
-      linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
-    );
-    lib.traverseShallow (
-      desc.commands,
-      linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
-    );
+    try {
+      lib.traverseShallow (
+        desc.datasources,
+        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
+      );
+      lib.traverseShallow (
+        desc.commands,
+        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
+      );
+    } catch(e) {
+      console.error(e);
+      this.reject(e);
+      return ok.val;
+    }
 
     this.loadEnvironments().then(
       this.handleResources.bind(this)
@@ -512,21 +518,24 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     //this.onAllDone();
   };
   DescriptorLoaderJob.prototype.loadElements = function () {
-    var app;
     if (!this.okToProceed()) {
       return;
     }
-    app = this.destroyable;
-    executeModifiers(false, this.descriptorHandler.descriptor);
-    if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
-      this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
-    }
+    try {
+      executeModifiers(false, this.descriptorHandler.descriptor);
+      if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
+        this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
+      }
 
-    this.produceLinks().then(
-      this.produceLogic.bind(this)
-    ).then(
-      this.onElementsLoaded.bind(this)
-    );
+      this.produceLinks().then(
+        this.produceLogic.bind(this)
+      ).then(
+        this.onElementsLoaded.bind(this)
+      );
+    } catch(e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
     this.onAllDone();
@@ -550,19 +559,31 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (!this.okToProceed()) {
       return;
     }
-    var links = this.destroyable._link.produceLinks(this.descriptorHandler.descriptor.links);
-    return links.then(
-      this.descriptorHandler.setLinks.bind(this.descriptorHandler)
-    );
+    var links;
+    try {
+      links = this.destroyable._link.produceLinks(this.descriptorHandler.descriptor.links);
+      return links.then(
+        this.descriptorHandler.setLinks.bind(this.descriptorHandler)
+      );
+    } catch (e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.produceLogic = function () {
     if (!this.okToProceed()) {
       return;
     }
-    var logic = this.destroyable._link.produceLogic(this.descriptorHandler.descriptor.logic);
-    return logic.then(
-      this.descriptorHandler.setLogic.bind(this.descriptorHandler)
-    );
+    var logic;
+    try {
+      logic = this.destroyable._link.produceLogic(this.descriptorHandler.descriptor.logic);
+      return logic.then(
+        this.descriptorHandler.setLogic.bind(this.descriptorHandler)
+      );
+    } catch (e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.loadEnvironments = function () {
     if (!lib.isFunction(environmentFactory)) {
@@ -668,10 +689,10 @@ module.exports = createDescriptorLoaderJob;
 
 
 },{"../commandcreator":3,"../datasourcecreator":4,"../functioncommandcreator":5}],9:[function(require,module,exports){
-function createAppJobs (lib, jobondestroyablelib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers) {
+function createAppJobs (lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers) {
   'use strict';
 
-  var AppJob = require('./appjobcreator')(lib, jobondestroyablelib),
+  var AppJob = require('./appjobcreator')(lib),
     DescriptorLoaderJob = require('./descriptorloaderjobcreator')(lib, AppJob, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   return {
@@ -683,7 +704,7 @@ function createAppJobs (lib, jobondestroyablelib, dataSuite, Resources, environt
 module.exports = createAppJobs;
 
 },{"./appjobcreator":7,"./descriptorloaderjobcreator":8}],10:[function(require,module,exports){
-ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(ALLEX, ALLEX.execSuite.libRegistry.get('allex_applinkinglib'), ALLEX.execSuite.libRegistry.get('allex_jobondestroyablelib'), ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'), ALLEX.execSuite.libRegistry.get('allex_environmentlib')));
+ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(ALLEX, ALLEX.execSuite.libRegistry.get('allex_applinkinglib'), ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'), ALLEX.execSuite.libRegistry.get('allex_environmentlib')));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
 },{"./libindex":18}],11:[function(require,module,exports){
@@ -802,7 +823,7 @@ function createDescriptorHandler (lib, mixins, ourlib) {
 module.exports = createDescriptorHandler;
 
 },{}],13:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -818,7 +839,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, jobondestroyablelib, Resources),
+    jobs = require('./jobs')(lib, Resources),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 
@@ -1159,11 +1180,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 module.exports = createBasicElement;
 
 },{"./jobs":17}],14:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor, jobondestroyablelib) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, jobondestroyablelib);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor);
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -1340,10 +1361,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
 module.exports = createElementUnloaderJob;
 
 },{}],17:[function(require,module,exports){
-function createElementJobs (lib, jobondestroyablelib, Resources) {
+function createElementJobs (lib, Resources) {
   'use strict';
 
-  var JobOnDestroyable = jobondestroyablelib.JobOnDestroyable;
+  var JobOnDestroyable = lib.qlib.JobOnDestroyable;
 
   return {
     ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources),
@@ -1355,7 +1376,7 @@ function createElementJobs (lib, jobondestroyablelib, Resources) {
 module.exports = createElementJobs;
 
 },{"./elementloadercreator":15,"./elementunloadercreator":16}],18:[function(require,module,exports){
-function libCreator (execlib, Linker, jobondestroyablelib, Hierarchy, environmentlib) {
+function libCreator (execlib, Linker, Hierarchy, environmentlib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -1375,8 +1396,8 @@ function libCreator (execlib, Linker, jobondestroyablelib, Hierarchy, environmen
     preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, jobondestroyablelib),
-    App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors, jobondestroyablelib),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors),
+    App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
     descriptorApi = require('./descriptorapi')(lib);
 
   require('./preprocessors')(lib, preProcessingRegistryLib, descriptorApi);

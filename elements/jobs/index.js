@@ -1,7 +1,7 @@
-function createElementJobs (lib, jobondestroyablelib, Resources) {
+function createElementJobs (lib, Resources) {
   'use strict';
 
-  var JobOnDestroyable = jobondestroyablelib.JobOnDestroyable;
+  var JobOnDestroyable = lib.qlib.JobOnDestroyable;
 
   return {
     ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources),

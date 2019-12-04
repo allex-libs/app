@@ -1,7 +1,7 @@
-function createAppJob (lib, jobondestroyablelib) {
+function createAppJob (lib) {
   'use strict';
 
-  var JobOnDestroyableBase = jobondestroyablelib.JobOnDestroyableBase;
+  var JobOnDestroyableBase = lib.qlib.JobOnDestroyableBase;
 
   function AppJob (app, defer) {
     JobOnDestroyableBase.call(this, app, defer);
