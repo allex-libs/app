@@ -5,7 +5,8 @@ function createMixins (lib) {
     LinksAndLogicDestroyableMixin: require('./linksandlogicdestroyablecreator')(lib),
     NeededConfigurationNamesMixin: require('./neededconfigurationnamescreator')(lib),
     DataElementMixin: require('./dataelementcreator')(lib),
-    DataElementFollowerMixin: require('./dataelementfollowercreator')(lib)
+    DataElementFollowerMixin: require('./dataelementfollowercreator')(lib),
+    FormMixin: require('./formcreator')(lib)
   };
 }
 

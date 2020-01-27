@@ -28,6 +28,9 @@ function create (lib, Hierarchy) {
     }
     return ret;
   };
+  BasicParent.prototype.justAttachListener = function (evntname, cborpropname, cb){
+    return Listenable.prototype.attachListener.call(this, evntname, cborpropname, cb);
+  };
 
   function fireOnAttach (self, propname, cb) {
     cb(self.get(propname));

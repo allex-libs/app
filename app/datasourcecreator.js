@@ -5,6 +5,7 @@ function createDataSource (lib, dataSuite) {
 
   function AppSideDataSource (source_name, should_running, filter) {
     CLDestroyable.call(this);
+    this.subSources = new lib.Map();
     this.should_running = should_running;
     this.running = false;
     this.source_name = source_name;
@@ -18,18 +19,43 @@ function createDataSource (lib, dataSuite) {
   lib.inherit (AppSideDataSource, CLDestroyable);
   AppSideDataSource.prototype.__cleanUp = function () {
     this.busy = true;
-    if (this._esl) this._esl.destroy();
-    this._esl = null;
     this.filter = null;
-    this.should_running = null;
-    this.running = null;
+    if (this._esl) {
+      this._esl.destroy();
+    }
+    this._esl = null;
     this.environment = null;
-    this.source_name = null;
     this.data = null;
+    this.source_name = null;
+    this.running = null;
+    this.should_running = null;
+    if (this.subSources) {
+      lib.containerDestroyAll(this.subSources);
+      this.subSources.destroy();
+    }
+    this.subSources = null;
     CLDestroyable.prototype.__cleanUp.call(this);
   };
 
-  //TODO: ovde sad treba jos da se radi ... kad se env ukaci, prevezi data source - ove ...
+  AppSideDataSource.prototype.getElement = function (elemname) {
+    var numcheck, elem;
+    if (!lib.isString(elemname)) {
+      console.warn('element name', elemname, 'might be problematic?');
+      throw new Error('Teach me how to deal with non-String element names...');
+    }
+    numcheck = parseInt(elemname);
+    if (lib.isNumber(numcheck)) {
+      elemname = numcheck;
+    }
+    elem = this.subSources.get(elemname);
+    if (elem) {
+      return elem;
+    }
+    elem = new AppSideDataSource(elemname, this.should_running, {});
+    this.subSources.add(elemname, elem);
+    return elem;
+  };
+
   AppSideDataSource.prototype._processShouldRunning  = function () {
     if (this.should_running) {
       this.start();
@@ -47,8 +73,13 @@ function createDataSource (lib, dataSuite) {
   AppSideDataSource.prototype.set_data = function (val) {
     if (this.data === val) return false;
     this.data = val;
+    this.subSources.traverse(valsetter.bind(null, val));
+    val = null;
     return true;
   };
+  function valsetter (val, subsource, subsourcename) {
+    subsource.set('data', val[subsourcename]);
+  }
 
   AppSideDataSource.prototype.set_environment = function (val) {
     if (this.environment === val) return false;

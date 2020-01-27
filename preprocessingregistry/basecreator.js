@@ -182,7 +182,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
     var instance = new ctor();
     if (!(instance instanceof BasicProcessor)) throw new Error('PreProcessor must be instance of BasicProcessor');
 
-    console.log(this.constructor.name, 'add', name);
+    //console.log(this.constructor.name, 'add', name);
     this.add (name, instance);
   };
   /**
