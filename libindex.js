@@ -1,4 +1,4 @@
-function libCreator (execlib, Linker, Hierarchy, environmentlib) {
+function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -10,7 +10,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib) {
   },
     lib = execlib.lib,
     mixins = require('./mixins')(lib),
-    BasicParent = require('./abstractions/basicparentcreator')(lib, Hierarchy),
+    BasicParent = require('./abstractions/basicparentcreator')(lib, Hierarchy, bufferableeventlib),
     DescriptorHandler = require('./descriptorhandlercreator')(lib, mixins, RESULT),
     Resources = require('./resources')(lib),
     misc = require('./misc')(lib),

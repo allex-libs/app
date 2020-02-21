@@ -1,23 +1,28 @@
-function create (lib, Hierarchy) {
+function create (lib, Hierarchy, bufferableeventlib) {
   'use strict';
 
   var ChangeableListenable = lib.ChangeableListenable,
     Destroyable = lib.Destroyable,
     Parent = Hierarchy.Parent,
-    Listenable = lib.Listenable;
+    Listenable = lib.Listenable,
+    BufferableHookCollectionContainerMixin = bufferableeventlib.BufferableHookCollectionContainerMixin,
+    BufferableHookCollection = bufferableeventlib.BufferableHookCollection;
 
   function BasicParent () {
     Parent.call(this);
     Destroyable.call(this);
     ChangeableListenable.call(this);
+    BufferableHookCollectionContainerMixin.call(this);
   }
   lib.inherit(BasicParent, Parent);
   BasicParent.prototype.destroy = Destroyable.prototype.destroy;
   BasicParent.prototype.extendTo = Destroyable.prototype.extendTo;
   BasicParent.prototype.shouldDie = Destroyable.prototype.shouldDie;
   ChangeableListenable.addMethods (BasicParent);
+  BufferableHookCollectionContainerMixin.addMethods (BasicParent);
 
   BasicParent.prototype.__cleanUp = function () {
+    BufferableHookCollectionContainerMixin.prototype.destroy.call(this);
     ChangeableListenable.prototype.__cleanUp.call(this);
     Parent.prototype.__cleanUp.call(this);
   };
@@ -78,6 +83,32 @@ function create (lib, Hierarchy) {
     }
 
     return sp;
+  };
+
+  BasicParent.prototype.createBufferableHookCollection = function () {
+    return new BufferableHookCollection();
+  };
+
+  BasicParent.prototype.isBufferableHookCollection = function (thingy) {
+    return thingy instanceof BufferableHookCollection;
+  };
+
+  BasicParent.prototype.bufferAllBufferableHookCollections = function () {
+    this.__children.traverse(bufferAllBufferableHookCollections);
+    BufferableHookCollectionContainerMixin.prototype.bufferAllBufferableHookCollections.call(this);
+  };
+
+  function bufferAllBufferableHookCollections (thingy) {
+    thingy.bufferAllBufferableHookCollections();
+  };
+
+  BasicParent.prototype.unbufferAllBufferableHookCollections = function () {
+    this.__children.traverse(unbufferAllBufferableHookCollections);
+    BufferableHookCollectionContainerMixin.prototype.unbufferAllBufferableHookCollections.call(this);
+  };
+
+  function unbufferAllBufferableHookCollections (thingy) {
+    thingy.unbufferAllBufferableHookCollections();
   };
 
 

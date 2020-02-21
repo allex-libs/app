@@ -77,6 +77,17 @@ function createDataSource (lib, dataSuite) {
     val = null;
     return true;
   };
+  AppSideDataSource.prototype.get_environmentdata = function () {
+    return this.data;
+  };
+  AppSideDataSource.prototype.set_environmentdata = function (data) {
+    var envds = this.environment ? this.environment.dataSources.get(this.source_name) : null;
+    if (envds && lib.isFunction(envds.setData)) {
+      envds.setData(data);
+      return true;
+    }
+    return false;
+  };
   function valsetter (val, subsource, subsourcename) {
     subsource.set('data', val[subsourcename]);
   }

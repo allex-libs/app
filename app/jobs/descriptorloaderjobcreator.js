@@ -162,12 +162,17 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (!this.okToProceed()) {
       return;
     }
+    this.destroyable.elements.traverse(unbuffer);
     desc = this.descriptorHandler.descriptor;
     if (desc && lib.isFunction (desc.onLoaded)) {
       desc.onLoaded(this);
     }
     this.resolve(this.descriptorHandler);
   };
+
+  function unbuffer (el) {
+    el.unbufferAllBufferableHookCollections();
+  }
 
 
   /* creation */

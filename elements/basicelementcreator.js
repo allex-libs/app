@@ -41,7 +41,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.resourcereqs = null;
     this.resourcealiases = null;
     this._loading_promise = null;
-    this.loadEvent = new lib.HookCollection();
+    this.loadEvent = this.createBufferableHookCollection(); //new lib.HookCollection();
     this.loading = false;
     this.initialized = false;
     this._hooks = new lib.Map();
@@ -165,6 +165,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.createElement = function (desc) {
     BasicElement.createElement(desc, this.addChild.bind(this));
   };
+  BasicElement.prototype.onElementCreated = function (chld) {
+    this.addChild(chld);
+  };
 
   BasicElement.prototype.set_actual = function (val) {
     if (!this.loadEvent) {
@@ -252,10 +255,12 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.createElement = function (desc, after_ctor) {
+    try {
     PrePreProcessor.process(desc);
     PreProcessor.process(desc);
     executeModifiers (true, desc);
     var el = elementFactory(desc);
+    el.bufferAllBufferableHookCollections();
     after_ctor(el);
     el.resourcedescs = desc ? (desc.resources||[]) : [];
     el.resourcereqs = desc ? (desc.requires||[]) : [];
@@ -268,6 +273,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     el._link = new Linker.LinkingEnvironment(el);
     el._link.produceLinks(desc.links).then(el.setLinks.bind(el));
     el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
+    } catch (e) {
+      console.error('Could not create element from desc', desc);
+      console.error(e);
+      throw e;
+    }
   }
 
   /*

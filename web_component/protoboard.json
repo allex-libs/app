@@ -14,7 +14,8 @@
       "allex:browser:core",
       "node_modules/allex_webappwebcomponent/dist/initializator.js",
       "allex:applinking:lib",
-      "allex:hierarchymixins:lib"
+      "allex:hierarchymixins:lib",
+      "allex:bufferableevent:lib"
     ]
   },
   "protoboard": {

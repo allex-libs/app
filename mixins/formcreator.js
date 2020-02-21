@@ -30,9 +30,9 @@ function createFormMixin (lib) {
 
   function FormMixin (id, options) {
     this.$form = null;
-    this.change = new lib.HookCollection();
-    this.submit = new lib.HookCollection();
-    this.partialSubmit = new lib.HookCollection();
+    this.change = this.createBufferableHookCollection(); //new lib.HookCollection();
+    this.submit = this.createBufferableHookCollection(); //new lib.HookCollection();
+    this.partialSubmit = this.createBufferableHookCollection(); //new lib.HookCollection();
     this.valid = null;
     this.validfields = {}; 
     this.initial = options ? options.initial : null;
