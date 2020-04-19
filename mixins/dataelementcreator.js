@@ -1,7 +1,8 @@
-function createDataElementMixin (lib) {
+function createDataElementMixin (lib, mylib) {
   'use strict';
 
-  var q = lib.q;
+  var q = lib.q,
+    DataUpdaterMixin = mylib.DataUpdaterMixin;
 
   function DataElementMixIn () {
     this.data = null;
@@ -37,20 +38,6 @@ function createDataElementMixin (lib) {
 
   DataElementMixIn.prototype.hasDataChanged = function (ret) {
     return lib.isUndef(ret) || ret === true;
-  };
-
-  DataElementMixIn.prototype.updateHashField = function (name, value) {
-    var val = {};
-    val[name] = value;
-    this.set('data', lib.extend ({}, this.get('data'), val));
-  };
-
-  DataElementMixIn.prototype.updateArrayElement = function (index, value) {
-    var old = this.get('data'),
-      n = old ? old.slice() : [];
-
-    n[index] = value;
-    this.set('data', n);
   };
 
   DataElementMixIn.prototype.set_busy = function (val) {
@@ -110,13 +97,12 @@ function createDataElementMixin (lib) {
     return JSON.stringify(thingy);
   }
 
-  DataElementMixIn.addMethods = function (chld) {
-    lib.inheritMethods (chld, DataElementMixIn
+  DataElementMixIn.addMethods = function (klass) {
+    DataUpdaterMixin.addMethods(klass);
+    lib.inheritMethods (klass, DataElementMixIn
       ,'preInitializeData'
       ,'postInitializeData'
       ,'set_data'
-      ,'updateHashField'
-      ,'updateArrayElement'
       ,'hasDataChanged'
       ,'set_busy'
       ,'tryDataMarkup'
@@ -125,7 +111,7 @@ function createDataElementMixin (lib) {
     );
   };
 
-  return DataElementMixIn;
+  mylib.DataElementMixin = DataElementMixIn;
 }
 
 module.exports = createDataElementMixin;

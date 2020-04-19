@@ -1,4 +1,4 @@
-function createFormMixin (lib) {
+function createFormMixin (lib, mylib) {
   'use strict';
 
   function possiblyBuildRegExp (obj, val, name) {
@@ -252,6 +252,6 @@ function createFormMixin (lib) {
     // fillObjectWithDefaultValues
   };
 
-  return FormMixin;
+  mylib.FormMixin = FormMixin;
 }
 module.exports = createFormMixin;

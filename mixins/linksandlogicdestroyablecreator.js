@@ -1,4 +1,4 @@
-function createLinksAndLogicDestroyableMixin (lib) {
+function createLinksAndLogicDestroyableMixin (lib, mylib) {
   'use strict';
 
   var q = lib.q;
@@ -103,7 +103,7 @@ function createLinksAndLogicDestroyableMixin (lib) {
       lib.arryDestroyAll(second.splice(0));
     }
   }
-  return LinksAndLogicDestroyableMixin;
+  mylib.LinksAndLogicDestroyableMixin = LinksAndLogicDestroyableMixin;
 }
 
 module.exports = createLinksAndLogicDestroyableMixin;

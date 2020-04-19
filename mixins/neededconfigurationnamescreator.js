@@ -1,4 +1,4 @@
-function createNeededConfigurationNamesMixin (lib) {
+function createNeededConfigurationNamesMixin (lib, mylib) {
   'use strict';
 
   function NeededConfigurationNamesMixin () {
@@ -34,7 +34,7 @@ function createNeededConfigurationNamesMixin (lib) {
     }
   }
 
-  return NeededConfigurationNamesMixin;
+  mylib.NeededConfigurationNamesMixin = NeededConfigurationNamesMixin;
 }
 
 module.exports = createNeededConfigurationNamesMixin;

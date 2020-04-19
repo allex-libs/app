@@ -1,4 +1,4 @@
-function createDataElementFollowerMixin (lib) {
+function createDataElementFollowerMixin (lib, mylib) {
   'use strict';
 
   function DataElementFollowerMixin () {
@@ -52,7 +52,7 @@ function createDataElementFollowerMixin (lib) {
     );
   };
 
-  return DataElementFollowerMixin;
+  mylib.DataElementFollowerMixin = DataElementFollowerMixin;
 }
 
 module.exports = createDataElementFollowerMixin;
