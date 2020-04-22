@@ -2106,7 +2106,7 @@ function createFormMixin (lib, mylib) {
     obj = null;
   }
 
-  function FormMixin (id, options) {
+  function FormMixin (options) {
     this.$form = null;
     this.change = this.createBufferableHookCollection(); //new lib.HookCollection();
     this.submit = this.createBufferableHookCollection(); //new lib.HookCollection();
@@ -2204,49 +2204,23 @@ function createFormMixin (lib, mylib) {
     this.set('progress', null);
   };
   FormMixin.prototype.initialize = function () {
-    this.$form = this.$element.is('form') ? this.$element : this.$element.find('form');
-
-    this.$form.attr({
-      'name': this.get('id'), ///add a name to form, to make angular validation work ....
-      'novalidate': ''     ///prevent browser validation ...
-    });
-    this.$form.removeAttr ('action'); //in order to avoid some refresh or so ...
-    this.$form.on('submit', this.fireSubmit.bind(this));
-    this.$form.find('[name]').toArray().forEach (this._prepareField.bind(this));
     this.appendHiddenFields(this.getConfigVal('hidden_fields'));
+    this.traverseFormFields(this._prepareField.bind(this));
   };
   FormMixin.prototype.empty = function () {
     this.set('data', {});
+  };
+  FormMixin.prototype.traverseFormFields = function (func) {
   };
   FormMixin.prototype.appendHiddenFields = function (fields) {
     if (!fields || !fields.length) return;
     fields.forEach (this._appendHiddenField.bind(this));
   };
   FormMixin.prototype._appendHiddenField = function (fieldname_or_record) {
-    var name = lib.isString(fieldname_or_record) ? fieldname_or_record : fieldname_or_record.name,
-      attrs = {
-        name: name,
-        type: 'hidden',
-      },
-      is_hash = !lib.isString(fieldname_or_record);
-
-    if (is_hash){
-      attrs.required = fieldname_or_record.required ? '' : undefined;
-      if ('value' in fieldname_or_record) {
-        this._default_values[name] = fieldname_or_record.value;
-      }
-    }
-
-    this.findByFieldName(name).remove(); ///remove existing elements whatever they are ...
-    var $el = $('<input>').attr(attrs);
-    this._prepareField($el);
-    this.$form.append ($el);
-    //this.$form.append($('<span> {{_ctrl.data.'+name+' | json}}</span>'));
   };
   FormMixin.prototype._prepareField = function (fieldel) {
   };
   FormMixin.prototype.findByFieldName = function (name) {
-    return this.$form.find ('[name="'+name+'"]');
   };
   FormMixin.prototype.toArray = function (keys) {
     return lib.hashToArray(keys, this.get('data'));
@@ -2271,13 +2245,6 @@ function createFormMixin (lib, mylib) {
     return true;
   };
   FormMixin.prototype.setInputEnabled = function (fieldname, enabled) {
-    var $el = this.$form.find('[name="'+fieldname+'"]');
-    if (enabled) {
-      $el.removeAttr('disabled');
-    }else{
-      $el.attr('disabled', 'disabled');
-    }
-    return $el;
   };
   FormMixin.prototype.disableInput = function (fieldname) {
     this.setInputEnabled(fieldname, false);
@@ -2309,6 +2276,7 @@ function createFormMixin (lib, mylib) {
       ,'doCloseOnSuccess'
       ,'set_progress'
       ,'empty'
+      ,'traverseFormFields'
       ,'appendHiddenFields'
       ,'_appendHiddenField'
       ,'_prepareField'
