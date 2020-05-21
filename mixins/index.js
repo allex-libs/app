@@ -4,9 +4,8 @@ function createMixins (lib) {
   var ret = {};
   require('./linksandlogicdestroyablecreator')(lib, ret);
   require('./neededconfigurationnamescreator')(lib, ret);
-  require('./dataupdatercreator')(lib, ret);
-  require('./dataelementcreator')(lib, ret);
-  require('./dataelementfollowercreator')(lib, ret);
+
+  require('./childactualizercreator')(lib, ret);
   require('./formcreator')(lib, ret);
   return ret;
 }

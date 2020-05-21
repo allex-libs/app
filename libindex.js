@@ -1,4 +1,4 @@
-function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib) {
+function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -19,6 +19,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
     Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors),
+    datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
     descriptorApi = require('./descriptorapi')(lib);
 

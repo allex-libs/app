@@ -826,11 +826,402 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(
   ALLEX.execSuite.libRegistry.get('allex_applinkinglib'),
   ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'),
   ALLEX.execSuite.libRegistry.get('allex_environmentlib'),
-  ALLEX.execSuite.libRegistry.get('allex_bufferableeventlib')
+  ALLEX.execSuite.libRegistry.get('allex_bufferableeventlib'),
+  ALLEX.execSuite.libRegistry.get('allex_datafilterslib')
 ));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./libindex":18}],11:[function(require,module,exports){
+},{"./libindex":23}],11:[function(require,module,exports){
+function createDataElementMixin (lib, mylib) {
+  'use strict';
+
+  var q = lib.q,
+    DataUpdaterMixin = mylib.DataUpdaterMixin;
+
+  function DataElementMixIn () {
+    this.data = null;
+    this.busy = false;
+  }
+
+  DataElementMixIn.prototype.__cleanUp = function () {
+    this.data = null;
+    this.busy = null;
+  };
+
+  DataElementMixIn.prototype.preInitializeData = function () {
+    //this.data = null;
+    this.set('data', null);
+  };
+  DataElementMixIn.prototype.postInitializeData = function () {
+    var data = this.getConfigVal('data');
+    if (lib.isVal(data)) {
+      this.set('data', data);
+    }
+  };
+
+  DataElementMixIn.prototype.set_data = function (data) {
+    var f;
+    this.tryDataMarkup(data);
+    f = this.getConfigVal('dataHandler');
+    if (lib.isFunction(f)) return f(this.$element, data);
+
+    if (this.data === data) return false;
+    this.data = data;
+    return true;
+  };
+
+  DataElementMixIn.prototype.hasDataChanged = function (ret) {
+    return lib.isUndef(ret) || ret === true;
+  };
+
+  DataElementMixIn.prototype.set_busy = function (val) {
+    this.busy = val;
+    console.log(this.get('id'), 'reported busy', val);
+  };
+
+  DataElementMixIn.prototype.tryDataMarkup = function (data) {
+    var dm, m;
+    if (!this.$element) {
+      return;
+    }
+    dm = this.getConfigVal('data_markup');
+    if (!dm) {
+      return;
+    }
+    m = this.produceDataMarkup(dm, data);
+    this.$element.html(m);
+    this.__children.traverse(function (c) {c.initialize();});
+    //this.$element.html(this.produceDataMarkup.bind(this, dm, data));
+  };
+
+  var _dmre = new RegExp('{{(.*?)}}', 'gm');
+  DataElementMixIn.prototype.produceDataMarkup = function (dm, item) {
+    var m;
+    if (lib.isArray(item)) {
+      return item.map(this.produceDataMarkup.bind(this, dm)).join(' ');
+    }
+    if (!lib.isString(dm)) {
+      return '';
+    }
+    return dm.replace(_dmre, this.doubleBracesSubstituter.bind(this, item));
+  }
+  DataElementMixIn.prototype.doubleBracesSubstituter = function (item, ignoretotalstr, str) {
+    var ret;
+    try {
+      ret = pretty(eval(str));
+    }
+    catch (ignore) {
+      ret = '';
+    }
+    return ret;
+  }
+  function pretty (thingy) {
+    if (!lib.isVal(thingy)) {
+      return thingy;
+    }
+    if (lib.isNumber(thingy)) {
+      return thingy;
+    }
+    if (lib.isString(thingy)) {
+      return thingy;
+    }
+    if (lib.isBoolean(thingy)) {
+      return thingy;
+    }
+    return JSON.stringify(thingy);
+  }
+
+  DataElementMixIn.addMethods = function (klass) {
+    DataUpdaterMixin.addMethods(klass);
+    lib.inheritMethods (klass, DataElementMixIn
+      ,'preInitializeData'
+      ,'postInitializeData'
+      ,'set_data'
+      ,'hasDataChanged'
+      ,'set_busy'
+      ,'tryDataMarkup'
+      ,'produceDataMarkup'
+      ,'doubleBracesSubstituter'
+    );
+  };
+
+  mylib.DataElementMixin = DataElementMixIn;
+}
+
+module.exports = createDataElementMixin;
+
+},{}],12:[function(require,module,exports){
+function createDataElementFollowerMixin (lib, mylib) {
+  'use strict';
+
+  function DataElementFollowerMixin () {
+    this.datamaster = null;
+    this.masterDataListener = null;
+  }
+  DataElementFollowerMixin.prototype.destroy = function () {
+    this.purgeDataMaster();
+  };
+  DataElementFollowerMixin.prototype.purgeDataMaster = function () {
+    if (this.masterDataListener) {
+      this.masterDataListener.destroy();
+    }
+    this.masterDataListener = null;
+    this.datamaster = null;
+  };
+  DataElementFollowerMixin.prototype.startFollowingDataOn = function (dataemitter) {
+    this.purgeDataMaster();
+    if (!lib.isFunction(dataemitter.attachListener)) {
+      console.warn('Method named "attachListener" was not found on dataemitter');
+      return;
+    }
+    this.masterDataListener = dataemitter.attachListener('changed', 'data', this.onMasterDataChanged.bind(this));
+    if (dataemitter.destroyed && (dataemitter.destroyed instanceof lib.HookCollection)) {
+      dataemitter.destroyed.attachForSingleShot(this.purgeDataMaster.bind(this));
+    }
+  };
+  DataElementFollowerMixin.prototype.startListeningToParentData = function () {
+    this.startFollowingDataOn(this.__parent);
+  };
+  DataElementFollowerMixin.prototype.onMasterDataChanged = function (data) {
+    var onMasterDataChanged = this.getConfigVal('onMasterDataChanged');
+    if (lib.isFunction(onMasterDataChanged)) {
+      onMasterDataChanged(this, data);
+    }
+  };
+  DataElementFollowerMixin.prototype.set_datamaster = function (datamaster) {
+    if (this.datamaster === datamaster) {
+      return false;
+    }
+    this.startFollowingDataOn(datamaster);
+    return true;
+  };
+  DataElementFollowerMixin.addMethods = function (klass) {
+    lib.inheritMethods(klass, DataElementFollowerMixin
+      ,'purgeDataMaster'
+      ,'startFollowingDataOn'
+      ,'startListeningToParentData'
+      ,'onMasterDataChanged'
+      ,'set_datamaster'
+    );
+  };
+
+  mylib.DataElementFollowerMixin = DataElementFollowerMixin;
+}
+
+module.exports = createDataElementFollowerMixin;
+
+},{}],13:[function(require,module,exports){
+function createDataUpdaterMixin (lib, mylib) {
+  'use strict';
+
+  function DataUpdaterMixin () {
+  }
+  DataUpdaterMixin.prototype.destroy = lib.dummyFunc;
+
+  DataUpdaterMixin.prototype.updateHashField = function (name, value) {
+    var val = {};
+    val[name] = value;
+    this.set('data', lib.extend ({}, this.get('data'), val));
+  };
+
+  DataUpdaterMixin.prototype.updateArrayElement = function (index, value) {
+    var old = this.get('data'),
+      n = old ? old.slice() : [];
+
+    n[index] = value;
+    this.set('data', n);
+  };
+
+  DataUpdaterMixin.addMethods = function (klass) {
+    lib.inheritMethods (klass, DataUpdaterMixin
+      ,'updateHashField'
+      ,'updateArrayElement'
+    );
+  };
+
+  mylib.DataUpdaterMixin = DataUpdaterMixin;
+}
+module.exports = createDataUpdaterMixin;
+
+},{}],14:[function(require,module,exports){
+function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
+  'use strict';
+
+  function FromDataCreatorMixin () {
+    if (!lib.isFunction(this.super_set_data)) {
+      throw new lib.Error('FROMDATACREATORMIXIN_NOT_APPLICABLE', this.constructor.name+' must have the super_set_data method, that calls set_data on the super class');
+    }
+    this.subElements = [];
+  }
+  FromDataCreatorMixin.prototype.destroy = function () {
+    if (this.subElements) {
+      lib.arryDestroyAll(this.subElements);
+    }
+    this.subElements = null;
+  };
+  FromDataCreatorMixin.prototype.set_data = function (data) {
+    //Implementor MUST have the super_set_data method!
+    this._purgeSubElements(data);
+    if (lib.isArray(data)) {
+      this.createFromArryData(data);
+    }
+    return this.super_set_data(data);
+  };
+  FromDataCreatorMixin.prototype.createFromArryData = function (data) {
+    if (this.getConfigVal('prependsubelements')) {
+      data = data.slice();
+      data.reverse();
+    }
+    data.forEach(this.createFromArryItem.bind(this));
+  };
+  FromDataCreatorMixin.prototype.createFromArryItem = function (item) {
+    var desc = this.createDescriptorFromArryItem(item),
+      testel;
+    if (desc) {
+      try {
+        testel = this.getElement(desc.name);
+        if(testel) {
+          testel.set('data', item);
+          return;
+        }
+      } catch(e) {}
+      desc.options = desc.options || {};
+      if (this.getConfigVal('prependsubelements')) {
+        desc.options.attach_to_parent = 'prepend';
+      }
+      desc.options.data = item;
+      elements.BasicElement.createElement(desc, this.addFromDataChild.bind(this));
+      return;
+    }
+    console.warn(this.constructor.name, 'created no descriptor from', item, 'so no child will be produced');
+  };
+  FromDataCreatorMixin.prototype.addFromDataChild = function (chld) {
+    this.subElements.push(this.destructableForSubElements(chld));
+    this.addChild(chld);
+  };
+  FromDataCreatorMixin.prototype.destructableForSubElements = function (chld) {
+    return chld;
+  };
+  FromDataCreatorMixin.prototype.createDescriptorFromArryItem = function (item) {
+    if (lib.isFunction(this.config.subDescriptorFromData)) {
+      return this.config.subDescriptorFromData(item);
+    }
+    /*
+    lib.extend({
+      name: this.config.data2Name(item)
+    }, this.config.subDescriptor)
+    */
+  };
+  FromDataCreatorMixin.prototype.prependData = function (data) {
+    var myprependsubelements = this.getConfigVal('prependsubelements') || false;
+    this.setConfigVal('prependsubelements', true, true);
+    this.set('data', data);
+    this.setConfigVal('prependsubelements', myprependsubelements, true);
+  };
+  FromDataCreatorMixin.prototype.appendData = function (data) {
+    var myprependsubelements = this.getConfigVal('prependsubelements') || false;
+    this.setConfigVal('prependsubelements', false, true);
+    this.set('data', data);
+    this.setConfigVal('prependsubelements', myprependsubelements, true);
+  };
+  FromDataCreatorMixin.prototype._purgeSubElements = function (data) {
+    if (data === null || !this.getConfigVal('skip_purge_subelements')) {
+      lib.arryDestroyAll(this.subElements);
+      this.subElements = [];
+    }
+  };
+  FromDataCreatorMixin.prototype.filterSubElements = function (filterdesc, bothmatchingandunmatching) {
+    var f, ret, _ret;
+    ret = bothmatchingandunmatching ? {matching: [], unmatching: []} : [];
+    if (!(lib.isArray(this.subElements) && this.subElements.length>0)) {
+      return ret;
+    }
+    f = datafilterslib.createFromDescriptor(filterdesc);
+    if (!f) {
+      return;
+    }
+    _ret = ret;
+    this.subElements.forEach(filterer.bind(null, f, bothmatchingandunmatching, _ret));
+    _ret = null;
+    bothmatchingandunmatching = null;
+    f.destroy();
+    f = null;
+    return ret;
+  };
+  function filterer (f, bothmatchingandunmatching, ret, chld) {
+    var data = chld.get('data');
+    if (f.isOK(data)) {
+      if (bothmatchingandunmatching) {
+        ret.matching.push(chld);
+        return;
+      }
+      ret.push(chld);
+      return;
+    }
+    if (bothmatchingandunmatching) {
+      ret.unmatching.push(chld);
+    }
+  }
+  FromDataCreatorMixin.prototype.traverseSubElementsWithFilter = function (filterdesc, cb) {
+    var f;
+    if (!(lib.isArray(this.subElements) && this.subElements.length>0)) {
+      return;
+    }
+    if (!lib.isFunction(cb)) {
+      return;
+    }
+    f = datafilterslib.createFromDescriptor(filterdesc);
+    if (!f) {
+      return;
+    }
+    this.subElements.forEach(filtertraverser.bind(null, f, cb));
+    f.destroy();
+    f = null;
+    cb = null;
+  };
+  function filtertraverser (f, cb, chld) {
+    //cb (chld, f.isOK(chld.get('data')));
+    var d = chld.get('data');
+    console.log('data', d, 'f.isOK', f.isOK(d));
+    cb(chld, f.isOK(d));
+  }
+  FromDataCreatorMixin.prototype.actualizeSubElementsWithFilter = function (filterdesc) {
+    this.traverseSubElementsWithFilter(filterdesc, function (chld, isok) {chld.set('actual', isok);});
+  };
+
+  FromDataCreatorMixin.addMethods = function (klass) {
+    lib.inheritMethods(klass, FromDataCreatorMixin
+      ,'set_data'
+      ,'createFromArryData'
+      ,'createFromArryItem'
+      ,'addFromDataChild'
+      ,'destructableForSubElements'
+      ,'createDescriptorFromArryItem'
+      ,'prependData'
+      ,'appendData'
+      ,'filterSubElements'
+      ,'traverseSubElementsWithFilter'
+      ,'actualizeSubElementsWithFilter'
+      ,'_purgeSubElements'
+    );
+  };
+
+  mylib.FromDataCreator = FromDataCreatorMixin;
+}
+module.exports = createFromDataCreatorMixin;
+
+},{}],15:[function(require,module,exports){
+function createDataMixins (lib, elements, datafilterslib, mixins) {
+  'use strict';
+
+  require('./dataupdatercreator')(lib, mixins);
+  require('./dataelementcreator')(lib, mixins);
+  require('./dataelementfollowercreator')(lib, mixins);
+  require('./fromdatacreator')(lib, elements, datafilterslib, mixins);
+}
+module.exports = createDataMixins;
+
+},{"./dataelementcreator":11,"./dataelementfollowercreator":12,"./dataupdatercreator":13,"./fromdatacreator":14}],16:[function(require,module,exports){
 function createDescriptorApi (lib) {
   var ArryOps = require('allex_arrayoperationslowlevellib')(lib.extend, lib.readPropertyFromDotDelimitedString, lib.isFunction, lib.Map, lib.AllexJSONizingError);
 
@@ -871,7 +1262,7 @@ function createDescriptorApi (lib) {
 module.exports = createDescriptorApi;
     
 
-},{"allex_arrayoperationslowlevellib":38}],12:[function(require,module,exports){
+},{"allex_arrayoperationslowlevellib":41}],17:[function(require,module,exports){
 function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
   var q = lib.q,
@@ -945,7 +1336,7 @@ function createDescriptorHandler (lib, mixins, ourlib) {
 
 module.exports = createDescriptorHandler;
 
-},{}],13:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
   /*
     possible config params : 
@@ -1312,7 +1703,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
 module.exports = createBasicElement;
 
-},{"./jobs":17}],14:[function(require,module,exports){
+},{"./jobs":22}],19:[function(require,module,exports){
 function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor) {
   'use strict';
 
@@ -1348,7 +1739,7 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
 
 module.exports = createElements;
 
-},{"./basicelementcreator.js":13}],15:[function(require,module,exports){
+},{"./basicelementcreator.js":18}],20:[function(require,module,exports){
 function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
   'use strict';
 
@@ -1437,7 +1828,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
 
 module.exports = createElementLoaderJob;
 
-},{}],16:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
   'use strict';
 
@@ -1493,7 +1884,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
 
 module.exports = createElementUnloaderJob;
 
-},{}],17:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 function createElementJobs (lib, Resources) {
   'use strict';
 
@@ -1508,8 +1899,8 @@ function createElementJobs (lib, Resources) {
 
 module.exports = createElementJobs;
 
-},{"./elementloadercreator":15,"./elementunloadercreator":16}],18:[function(require,module,exports){
-function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib) {
+},{"./elementloadercreator":20,"./elementunloadercreator":21}],23:[function(require,module,exports){
+function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -1530,6 +1921,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
     Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors),
+    datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
     descriptorApi = require('./descriptorapi')(lib);
 
@@ -1720,7 +2112,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
 
 module.exports = libCreator;
 
-},{"./abstractions/basicparentcreator":1,"./app":6,"./descriptorapi":11,"./descriptorhandlercreator":12,"./elements":14,"./misc":19,"./mixins":24,"./modifiers":27,"./preprocessingregistry":29,"./preprocessors":36,"./resources":37}],19:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":24,"./mixins":27,"./modifiers":30,"./preprocessingregistry":32,"./preprocessors":39,"./resources":40}],24:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -1863,248 +2255,97 @@ function createMisc (lib) {
 
 module.exports = createMisc;
 
-},{}],20:[function(require,module,exports){
-function createDataElementMixin (lib, mylib) {
+},{}],25:[function(require,module,exports){
+function createChildActualizerMixin (lib, mylib) {
   'use strict';
 
-  var q = lib.q,
-    DataUpdaterMixin = mylib.DataUpdaterMixin;
+  function ChildActualizerMixin () {
+    this.actualchildren = null;
+  }
+  ChildActualizerMixin.prototype.destroy = function () {
+    this.actualchildren = null;
+  };
+  ChildActualizerMixin.prototype.set_actualchildren = function (val) {
+    this.actualchildren = val;
+    traverseChildrenForActual.call(this, actualizer.bind(null, val));
+  };
+  ChildActualizerMixin.prototype.initChildActualizer = function () {
+    var initiallyactual = this.getConfigVal('initiallyactualchildren');
+    traverseChildrenForActual.call(this, actualizer.bind(null, initiallyactual));
+    initiallyactual = null;
+  };
 
-  function DataElementMixIn () {
-    this.data = null;
-    this.busy = false;
+  ChildActualizerMixin.addMethods = function (klass) {
+    lib.inheritMethods(klass, ChildActualizerMixin
+      ,'set_actualchildren'
+      ,'initChildActualizer'
+    );
+    klass.prototype.postInitializationMethodNames = klass.prototype.postInitializationMethodNames.concat(['initChildActualizer']);
+  };
+
+  //statics
+  function initiallySetActualChildren (initact) {
   }
 
-  DataElementMixIn.prototype.__cleanUp = function () {
-    this.data = null;
-    this.busy = null;
-  };
-
-  DataElementMixIn.prototype.preInitializeData = function () {
-    //this.data = null;
-    this.set('data', null);
-  };
-  DataElementMixIn.prototype.postInitializeData = function () {
-    var data = this.getConfigVal('data');
-    if (lib.isVal(data)) {
-      this.set('data', data);
-    }
-  };
-
-  DataElementMixIn.prototype.set_data = function (data) {
-    var f;
-    this.tryDataMarkup(data);
-    f = this.getConfigVal('dataHandler');
-    if (lib.isFunction(f)) return f(this.$element, data);
-
-    if (this.data === data) return false;
-    this.data = data;
-    return true;
-  };
-
-  DataElementMixIn.prototype.hasDataChanged = function (ret) {
-    return lib.isUndef(ret) || ret === true;
-  };
-
-  DataElementMixIn.prototype.set_busy = function (val) {
-    this.busy = val;
-    console.log(this.get('id'), 'reported busy', val);
-  };
-
-  DataElementMixIn.prototype.tryDataMarkup = function (data) {
-    var dm, m;
-    if (!this.$element) {
+  function traverseChildrenForActual (cb) {
+    var chsforact;
+    if (!lib.isFunction(cb)) {
       return;
     }
-    dm = this.getConfigVal('data_markup');
-    if (!dm) {
+    chsforact = this.getConfigVal('childrenforactualization');
+    if (lib.isString(chsforact)) {
+      cbTraverserForElementName.call(this, cb, elname);
+      cb = null;
       return;
     }
-    m = this.produceDataMarkup(dm, data);
-    this.$element.html(m);
-    this.__children.traverse(function (c) {c.initialize();});
-    //this.$element.html(this.produceDataMarkup.bind(this, dm, data));
-  };
-
-  var _dmre = new RegExp('{{(.*?)}}', 'gm');
-  DataElementMixIn.prototype.produceDataMarkup = function (dm, item) {
-    var m;
-    if (lib.isArray(item)) {
-      return item.map(this.produceDataMarkup.bind(this, dm)).join(' ');
+    if (lib.isArray(chsforact)) {
+      chsforact.forEach(cbTraverserForElementName.bind(this, cb));
+      cb = null;
+      return;
     }
-    if (!lib.isString(dm)) {
-      return '';
+    if (this.__children) {
+      this.__children.traverse(cbTraverserForElement.bind(this, cb));
+      cb = null;
+      return;
     }
-    return dm.replace(_dmre, this.doubleBracesSubstituter.bind(this, item));
   }
-  DataElementMixIn.prototype.doubleBracesSubstituter = function (item, ignoretotalstr, str) {
-    var ret;
+
+  function cbTraverserForElementName (cb, elname) {
+    var el;
     try {
-      ret = pretty(eval(str));
-    }
-    catch (ignore) {
-      ret = '';
-    }
-    return ret;
-  }
-  function pretty (thingy) {
-    if (!lib.isVal(thingy)) {
-      return thingy;
-    }
-    if (lib.isNumber(thingy)) {
-      return thingy;
-    }
-    if (lib.isString(thingy)) {
-      return thingy;
-    }
-    if (lib.isBoolean(thingy)) {
-      return thingy;
-    }
-    return JSON.stringify(thingy);
-  }
-
-  DataElementMixIn.addMethods = function (klass) {
-    DataUpdaterMixin.addMethods(klass);
-    lib.inheritMethods (klass, DataElementMixIn
-      ,'preInitializeData'
-      ,'postInitializeData'
-      ,'set_data'
-      ,'hasDataChanged'
-      ,'set_busy'
-      ,'tryDataMarkup'
-      ,'produceDataMarkup'
-      ,'doubleBracesSubstituter'
-    );
-  };
-
-  mylib.DataElementMixin = DataElementMixIn;
-}
-
-module.exports = createDataElementMixin;
-
-},{}],21:[function(require,module,exports){
-function createDataElementFollowerMixin (lib, mylib) {
-  'use strict';
-
-  function DataElementFollowerMixin () {
-    this.datamaster = null;
-    this.masterDataListener = null;
-  }
-  DataElementFollowerMixin.prototype.destroy = function () {
-    this.purgeDataMaster();
-  };
-  DataElementFollowerMixin.prototype.purgeDataMaster = function () {
-    if (this.masterDataListener) {
-      this.masterDataListener.destroy();
-    }
-    this.masterDataListener = null;
-    this.datamaster = null;
-  };
-  DataElementFollowerMixin.prototype.startFollowingDataOn = function (dataemitter) {
-    this.purgeDataMaster();
-    if (!lib.isFunction(dataemitter.attachListener)) {
-      console.warn('Method named "attachListener" was not found on dataemitter');
+      el = this.getElement(elname); 
+    } catch(e) { return; }
+    if (!el) {
       return;
     }
-    this.masterDataListener = dataemitter.attachListener('changed', 'data', this.onMasterDataChanged.bind(this));
-    if (dataemitter.destroyed && (dataemitter.destroyed instanceof lib.HookCollection)) {
-      dataemitter.destroyed.attachForSingleShot(this.purgeDataMaster.bind(this));
-    }
-  };
-  DataElementFollowerMixin.prototype.startListeningToParentData = function () {
-    this.startFollowingDataOn(this.__parent);
-  };
-  DataElementFollowerMixin.prototype.onMasterDataChanged = function (data) {
-    var onMasterDataChanged = this.getConfigVal('onMasterDataChanged');
-    if (lib.isFunction(onMasterDataChanged)) {
-      onMasterDataChanged(this, data);
-    }
-  };
-  DataElementFollowerMixin.prototype.set_datamaster = function (datamaster) {
-    if (this.datamaster === datamaster) {
-      return false;
-    }
-    this.startFollowingDataOn(datamaster);
-    return true;
-  };
-  DataElementFollowerMixin.addMethods = function (klass) {
-    lib.inheritMethods(klass, DataElementFollowerMixin
-      ,'purgeDataMaster'
-      ,'startFollowingDataOn'
-      ,'startListeningToParentData'
-      ,'onMasterDataChanged'
-      ,'set_datamaster'
-    );
-  };
-
-  mylib.DataElementFollowerMixin = DataElementFollowerMixin;
-}
-
-module.exports = createDataElementFollowerMixin;
-
-},{}],22:[function(require,module,exports){
-function createDataUpdaterMixin (lib, mylib) {
-  'use strict';
-
-  function DataUpdaterMixin () {
+    cbTraverserForElement(cb, el);
   }
-  DataUpdaterMixin.prototype.destroy = lib.dummyFunc;
+  //endof statics
 
-  DataUpdaterMixin.prototype.updateHashField = function (name, value) {
-    var val = {};
-    val[name] = value;
-    this.set('data', lib.extend ({}, this.get('data'), val));
-  };
+  //locals
+  function cbTraverserForElement (cb, el) {
+    cb(el);
+  }
+  function actualizer (shouldbeactual, el) {
+    if (lib.isString(shouldbeactual)) {
+      el.set('actual', el.id === shouldbeactual);
+      return;
+    }
+    if (lib.isArray(shouldbeactual)) {
+      el.set('actual', shouldbeactual.indexOf(el.id)>=0);
+      return;
+    }
+    el.set('actual', false);
+  }
+  //endof locals
 
-  DataUpdaterMixin.prototype.updateArrayElement = function (index, value) {
-    var old = this.get('data'),
-      n = old ? old.slice() : [];
-
-    n[index] = value;
-    this.set('data', n);
-  };
-
-  DataUpdaterMixin.addMethods = function (klass) {
-    lib.inheritMethods (klass, DataUpdaterMixin
-      ,'updateHashField'
-      ,'updateArrayElement'
-    );
-  };
-
-  mylib.DataUpdaterMixin = DataUpdaterMixin;
+  mylib.ChildActualizer = ChildActualizerMixin;
 }
-module.exports = createDataUpdaterMixin;
+module.exports = createChildActualizerMixin;
 
-},{}],23:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 function createFormMixin (lib, mylib) {
   'use strict';
-
-  function possiblyBuildRegExp (obj, val, name) {
-    if (name === 'regex') {
-      if (lib.isString(val)) {
-        obj[name] = new RegExp(val);
-      }
-      if (val && 'object' === typeof val && 'string' in val && 'flags' in val && lib.isString(val.string)) {
-        obj[name] = new RegExp(val.string, val.flags);
-      }
-    }
-  }
-
-  function possiblyBuildRegExps1 (val, name) {
-    if ('object' !== typeof val) {
-      return;
-    }
-    lib.traverseShallow(val, possiblyBuildRegExp.bind(null, val));
-    val = null;
-  }
-
-  function possiblyBuildRegExps (obj) {
-    if (!obj) {
-      return;
-    }
-    lib.traverseShallow(obj, possiblyBuildRegExps1);
-    obj = null;
-  }
 
   function FormMixin (options) {
     this.$form = null;
@@ -2118,7 +2359,6 @@ function createFormMixin (lib, mylib) {
     this.progress = null;
     this.array_keys = options ? options.array_keys : null;
     this._default_values = {};
-    possiblyBuildRegExps(this.getConfigVal('validation'));
   }
   FormMixin.prototype.destroy = function () {
     this._default_values = null;
@@ -2205,6 +2445,7 @@ function createFormMixin (lib, mylib) {
   };
   FormMixin.prototype.initialize = function () {
     this.appendHiddenFields(this.getConfigVal('hidden_fields'));
+    this.appendSyntheticFields(this.getConfigVal('synthetic_fields'));
     this.traverseFormFields(this._prepareField.bind(this));
   };
   FormMixin.prototype.empty = function () {
@@ -2213,10 +2454,16 @@ function createFormMixin (lib, mylib) {
   FormMixin.prototype.traverseFormFields = function (func) {
   };
   FormMixin.prototype.appendHiddenFields = function (fields) {
-    if (!fields || !fields.length) return;
+    if (!lib.isArray(fields) || !fields.length) return;
     fields.forEach (this._appendHiddenField.bind(this));
   };
   FormMixin.prototype._appendHiddenField = function (fieldname_or_record) {
+  };
+  FormMixin.prototype.appendSyntheticFields = function (fields) {
+    if (!lib.isArray(fields) || !fields.length) return;
+    fields.forEach (this._appendSyntheticField.bind(this));
+  };
+  FormMixin.prototype._appendSyntheticField = function (fieldname_or_record) {
   };
   FormMixin.prototype._prepareField = function (fieldel) {
   };
@@ -2279,6 +2526,8 @@ function createFormMixin (lib, mylib) {
       ,'traverseFormFields'
       ,'appendHiddenFields'
       ,'_appendHiddenField'
+      ,'appendSyntheticFields'
+      ,'_appendSyntheticField'
       ,'_prepareField'
       ,'findByFieldName'
       ,'toArray'
@@ -2302,23 +2551,22 @@ function createFormMixin (lib, mylib) {
 }
 module.exports = createFormMixin;
 
-},{}],24:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 function createMixins (lib) {
   'use strict';
 
   var ret = {};
   require('./linksandlogicdestroyablecreator')(lib, ret);
   require('./neededconfigurationnamescreator')(lib, ret);
-  require('./dataupdatercreator')(lib, ret);
-  require('./dataelementcreator')(lib, ret);
-  require('./dataelementfollowercreator')(lib, ret);
+
+  require('./childactualizercreator')(lib, ret);
   require('./formcreator')(lib, ret);
   return ret;
 }
 
 module.exports = createMixins;
 
-},{"./dataelementcreator":20,"./dataelementfollowercreator":21,"./dataupdatercreator":22,"./formcreator":23,"./linksandlogicdestroyablecreator":25,"./neededconfigurationnamescreator":26}],25:[function(require,module,exports){
+},{"./childactualizercreator":25,"./formcreator":26,"./linksandlogicdestroyablecreator":28,"./neededconfigurationnamescreator":29}],28:[function(require,module,exports){
 function createLinksAndLogicDestroyableMixin (lib, mylib) {
   'use strict';
 
@@ -2429,7 +2677,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
 
 module.exports = createLinksAndLogicDestroyableMixin;
 
-},{}],26:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 function createNeededConfigurationNamesMixin (lib, mylib) {
   'use strict';
 
@@ -2471,7 +2719,7 @@ function createNeededConfigurationNamesMixin (lib, mylib) {
 
 module.exports = createNeededConfigurationNamesMixin;
 
-},{}],27:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 function createModifiers (execlib, mixins, misc) {
   'use strict';
 
@@ -2671,7 +2919,7 @@ function createModifiers (execlib, mixins, misc) {
 
 module.exports = createModifiers;
 
-},{}],28:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
@@ -2918,7 +3166,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
 
 module.exports = createPreProcessingRegistry;
 
-},{}],29:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 function createPreProcessingRegistries (lib, mixins) {
   'use strict';
 
@@ -2936,7 +3184,7 @@ function createPreProcessingRegistries (lib, mixins) {
 
 module.exports = createPreProcessingRegistries;
 
-},{"./basecreator":28,"./prepreprocessingregistrycreator":30,"./preprocessingregistrycreator.js":31}],30:[function(require,module,exports){
+},{"./basecreator":31,"./prepreprocessingregistrycreator":33,"./preprocessingregistrycreator.js":34}],33:[function(require,module,exports){
 function createPrePreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -2978,7 +3226,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPrePreProcessor;
 
-},{}],31:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 function createPreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -3011,7 +3259,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPreProcessor;
 
-},{}],32:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -3045,7 +3293,7 @@ function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHe
 
 module.exports = createCommandPreprocessor;
 
-},{}],33:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -3079,7 +3327,7 @@ function createDataCommandPreprocessor (lib, preprocessingregistrylib, Environme
 
 module.exports = createDataCommandPreprocessor;
 
-},{}],34:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -3119,7 +3367,7 @@ function createDataSourcePreprocessor (lib, preprocessingregistrylib, Environmen
 
 module.exports = createDataSourcePreprocessor;
 
-},{}],35:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -3229,7 +3477,7 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
 
 module.exports = createEnvironmentHelperPreprocessor;
 
-},{}],36:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -3243,7 +3491,7 @@ function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
 
 module.exports = createPreProcessors;
 
-},{"./commandcreator":32,"./datacommandcreator":33,"./datasourcecreator":34,"./environmenthelpercreator":35}],37:[function(require,module,exports){
+},{"./commandcreator":35,"./datacommandcreator":36,"./datasourcecreator":37,"./environmenthelpercreator":38}],40:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
@@ -3365,7 +3613,7 @@ function createResourcesModule (lib) {
 
 module.exports = createResourcesModule;
 
-},{}],38:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 module.exports = function createArryOperations(extend, readPropertyFromDotDelimitedString, isFunction, Map, AllexJSONizingError) {
   function union(a1, a2) {
     var ret = a1.slice();

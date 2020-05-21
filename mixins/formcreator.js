@@ -1,33 +1,6 @@
 function createFormMixin (lib, mylib) {
   'use strict';
 
-  function possiblyBuildRegExp (obj, val, name) {
-    if (name === 'regex') {
-      if (lib.isString(val)) {
-        obj[name] = new RegExp(val);
-      }
-      if (val && 'object' === typeof val && 'string' in val && 'flags' in val && lib.isString(val.string)) {
-        obj[name] = new RegExp(val.string, val.flags);
-      }
-    }
-  }
-
-  function possiblyBuildRegExps1 (val, name) {
-    if ('object' !== typeof val) {
-      return;
-    }
-    lib.traverseShallow(val, possiblyBuildRegExp.bind(null, val));
-    val = null;
-  }
-
-  function possiblyBuildRegExps (obj) {
-    if (!obj) {
-      return;
-    }
-    lib.traverseShallow(obj, possiblyBuildRegExps1);
-    obj = null;
-  }
-
   function FormMixin (options) {
     this.$form = null;
     this.change = this.createBufferableHookCollection(); //new lib.HookCollection();
@@ -40,7 +13,6 @@ function createFormMixin (lib, mylib) {
     this.progress = null;
     this.array_keys = options ? options.array_keys : null;
     this._default_values = {};
-    possiblyBuildRegExps(this.getConfigVal('validation'));
   }
   FormMixin.prototype.destroy = function () {
     this._default_values = null;
@@ -127,6 +99,7 @@ function createFormMixin (lib, mylib) {
   };
   FormMixin.prototype.initialize = function () {
     this.appendHiddenFields(this.getConfigVal('hidden_fields'));
+    this.appendSyntheticFields(this.getConfigVal('synthetic_fields'));
     this.traverseFormFields(this._prepareField.bind(this));
   };
   FormMixin.prototype.empty = function () {
@@ -135,10 +108,16 @@ function createFormMixin (lib, mylib) {
   FormMixin.prototype.traverseFormFields = function (func) {
   };
   FormMixin.prototype.appendHiddenFields = function (fields) {
-    if (!fields || !fields.length) return;
+    if (!lib.isArray(fields) || !fields.length) return;
     fields.forEach (this._appendHiddenField.bind(this));
   };
   FormMixin.prototype._appendHiddenField = function (fieldname_or_record) {
+  };
+  FormMixin.prototype.appendSyntheticFields = function (fields) {
+    if (!lib.isArray(fields) || !fields.length) return;
+    fields.forEach (this._appendSyntheticField.bind(this));
+  };
+  FormMixin.prototype._appendSyntheticField = function (fieldname_or_record) {
   };
   FormMixin.prototype._prepareField = function (fieldel) {
   };
@@ -201,6 +180,8 @@ function createFormMixin (lib, mylib) {
       ,'traverseFormFields'
       ,'appendHiddenFields'
       ,'_appendHiddenField'
+      ,'appendSyntheticFields'
+      ,'_appendSyntheticField'
       ,'_prepareField'
       ,'findByFieldName'
       ,'toArray'
