@@ -3,13 +3,14 @@ function createDataSource (lib, dataSuite) {
 
   var CLDestroyable = lib.CLDestroyable;
 
-  function AppSideDataSource (source_name, should_running, filter) {
+  function AppSideDataSource (source_name, should_running, filter, initial_value) {
     CLDestroyable.call(this);
     this.subSources = new lib.Map();
     this.should_running = should_running;
     this.running = false;
     this.source_name = source_name;
-    this.data = null;
+    this.initial_value = initial_value;
+    this.data = initial_value;
     this.environment = null;
     this._esl = null;
     this.filter = filter;
@@ -26,6 +27,7 @@ function createDataSource (lib, dataSuite) {
     this._esl = null;
     this.environment = null;
     this.data = null;
+    this.initial_value = null;
     this.source_name = null;
     this.running = null;
     this.should_running = null;
@@ -51,7 +53,7 @@ function createDataSource (lib, dataSuite) {
     if (elem) {
       return elem;
     }
-    elem = new AppSideDataSource(elemname, this.should_running, {});
+    elem = new AppSideDataSource(elemname, this.should_running, {}, this.initial_value);
     this.subSources.add(elemname, elem);
     return elem;
   };

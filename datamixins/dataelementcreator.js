@@ -32,8 +32,20 @@ function createDataElementMixin (lib, mylib) {
     if (lib.isFunction(f)) return f(this.$element, data);
 
     if (this.data === data) return false;
+    this.onNullData(null === data);
+    this.onEmptyDataArray(lib.isArray(data) && data.length===0);
     this.data = data;
     return true;
+  };
+
+  DataElementMixIn.prototype.onNullData = function () {
+  };
+
+  DataElementMixIn.prototype.onEmptyDataArray = function () {
+  };
+
+  DataElementMixIn.prototype.extendDatWith = function (data) {
+    this.set('data', lib.extend({}, this.get('data'), data));
   };
 
   DataElementMixIn.prototype.hasDataChanged = function (ret) {
@@ -103,6 +115,9 @@ function createDataElementMixin (lib, mylib) {
       ,'preInitializeData'
       ,'postInitializeData'
       ,'set_data'
+      ,'onNullData'
+      ,'onEmptyDataArray'
+      ,'extendDatWith'
       ,'hasDataChanged'
       ,'set_busy'
       ,'tryDataMarkup'

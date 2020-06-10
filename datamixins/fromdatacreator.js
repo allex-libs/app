@@ -58,7 +58,7 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
   };
   FromDataCreatorMixin.prototype.createDescriptorFromArryItem = function (item) {
     if (lib.isFunction(this.config.subDescriptorFromData)) {
-      return this.config.subDescriptorFromData(item);
+      return this.config.subDescriptorFromData.call(this, item);
     }
     /*
     lib.extend({
@@ -134,10 +134,12 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
     cb = null;
   };
   function filtertraverser (f, cb, chld) {
-    //cb (chld, f.isOK(chld.get('data')));
+    cb (chld, f.isOK(chld.get('data')));
+    /*
     var d = chld.get('data');
     console.log('data', d, 'f.isOK', f.isOK(d));
     cb(chld, f.isOK(d));
+    */
   }
   FromDataCreatorMixin.prototype.actualizeSubElementsWithFilter = function (filterdesc) {
     this.traverseSubElementsWithFilter(filterdesc, function (chld, isok) {chld.set('actual', isok);});

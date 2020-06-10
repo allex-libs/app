@@ -199,7 +199,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
         console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
+    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
     datasources.add(item.name, ds);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }

@@ -17,6 +17,10 @@ function createDataElementFollowerMixin (lib, mylib) {
   };
   DataElementFollowerMixin.prototype.startFollowingDataOn = function (dataemitter) {
     this.purgeDataMaster();
+    if (!dataemitter) {
+      this.onMasterDataChanged(null);
+      return;
+    }
     if (!lib.isFunction(dataemitter.attachListener)) {
       console.warn('Method named "attachListener" was not found on dataemitter');
       return;
@@ -36,10 +40,8 @@ function createDataElementFollowerMixin (lib, mylib) {
     }
   };
   DataElementFollowerMixin.prototype.set_datamaster = function (datamaster) {
-    if (this.datamaster === datamaster) {
-      return false;
-    }
     this.startFollowingDataOn(datamaster);
+    this.datamaster = datamaster;
     return true;
   };
   DataElementFollowerMixin.addMethods = function (klass) {

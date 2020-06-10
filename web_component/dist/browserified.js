@@ -333,13 +333,14 @@ function createDataSource (lib, dataSuite) {
 
   var CLDestroyable = lib.CLDestroyable;
 
-  function AppSideDataSource (source_name, should_running, filter) {
+  function AppSideDataSource (source_name, should_running, filter, initial_value) {
     CLDestroyable.call(this);
     this.subSources = new lib.Map();
     this.should_running = should_running;
     this.running = false;
     this.source_name = source_name;
-    this.data = null;
+    this.initial_value = initial_value;
+    this.data = initial_value;
     this.environment = null;
     this._esl = null;
     this.filter = filter;
@@ -356,6 +357,7 @@ function createDataSource (lib, dataSuite) {
     this._esl = null;
     this.environment = null;
     this.data = null;
+    this.initial_value = null;
     this.source_name = null;
     this.running = null;
     this.should_running = null;
@@ -381,7 +383,7 @@ function createDataSource (lib, dataSuite) {
     if (elem) {
       return elem;
     }
-    elem = new AppSideDataSource(elemname, this.should_running, {});
+    elem = new AppSideDataSource(elemname, this.should_running, {}, this.initial_value);
     this.subSources.add(elemname, elem);
     return elem;
   };
@@ -764,7 +766,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
         console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null);
+    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
     datasources.add(item.name, ds);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
@@ -866,8 +868,20 @@ function createDataElementMixin (lib, mylib) {
     if (lib.isFunction(f)) return f(this.$element, data);
 
     if (this.data === data) return false;
+    this.onNullData(null === data);
+    this.onEmptyDataArray(lib.isArray(data) && data.length===0);
     this.data = data;
     return true;
+  };
+
+  DataElementMixIn.prototype.onNullData = function () {
+  };
+
+  DataElementMixIn.prototype.onEmptyDataArray = function () {
+  };
+
+  DataElementMixIn.prototype.extendDatWith = function (data) {
+    this.set('data', lib.extend({}, this.get('data'), data));
   };
 
   DataElementMixIn.prototype.hasDataChanged = function (ret) {
@@ -937,6 +951,9 @@ function createDataElementMixin (lib, mylib) {
       ,'preInitializeData'
       ,'postInitializeData'
       ,'set_data'
+      ,'onNullData'
+      ,'onEmptyDataArray'
+      ,'extendDatWith'
       ,'hasDataChanged'
       ,'set_busy'
       ,'tryDataMarkup'
@@ -970,6 +987,10 @@ function createDataElementFollowerMixin (lib, mylib) {
   };
   DataElementFollowerMixin.prototype.startFollowingDataOn = function (dataemitter) {
     this.purgeDataMaster();
+    if (!dataemitter) {
+      this.onMasterDataChanged(null);
+      return;
+    }
     if (!lib.isFunction(dataemitter.attachListener)) {
       console.warn('Method named "attachListener" was not found on dataemitter');
       return;
@@ -989,10 +1010,8 @@ function createDataElementFollowerMixin (lib, mylib) {
     }
   };
   DataElementFollowerMixin.prototype.set_datamaster = function (datamaster) {
-    if (this.datamaster === datamaster) {
-      return false;
-    }
     this.startFollowingDataOn(datamaster);
+    this.datamaster = datamaster;
     return true;
   };
   DataElementFollowerMixin.addMethods = function (klass) {
@@ -1104,7 +1123,7 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
   };
   FromDataCreatorMixin.prototype.createDescriptorFromArryItem = function (item) {
     if (lib.isFunction(this.config.subDescriptorFromData)) {
-      return this.config.subDescriptorFromData(item);
+      return this.config.subDescriptorFromData.call(this, item);
     }
     /*
     lib.extend({
@@ -1180,10 +1199,12 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
     cb = null;
   };
   function filtertraverser (f, cb, chld) {
-    //cb (chld, f.isOK(chld.get('data')));
+    cb (chld, f.isOK(chld.get('data')));
+    /*
     var d = chld.get('data');
     console.log('data', d, 'f.isOK', f.isOK(d));
     cb(chld, f.isOK(d));
+    */
   }
   FromDataCreatorMixin.prototype.actualizeSubElementsWithFilter = function (filterdesc) {
     this.traverseSubElementsWithFilter(filterdesc, function (chld, isok) {chld.set('actual', isok);});
