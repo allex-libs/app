@@ -1579,7 +1579,29 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
 
-  BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
+  //BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
+  function splitAtDot (str) {
+    var dotpos = str.indexOf('.');
+    if (dotpos>=0) {
+      return [str.slice(0,dotpos), str.slice(dotpos+1)];
+    }
+    return [str, null];
+  }
+
+  BasicElement.prototype.getElement = function (path) { 
+    var splits, elem;
+    splits = splitAtDot(path);
+    //console.log(path, '=>', splits);
+    if (!splits[0]) {
+      elem = this;
+    } else {
+      elem = this.findById(splits[0]);
+    }
+    if (!elem) {
+      throw new lib.Error('INVALID_PATH', 'Path '+path+' did not produce a valid first element');
+    }
+    return splits[1] ? elem.getElement(splits[1]) : elem;
+  };
   BasicElement.prototype.addAppLink = lib.dummyFunc;
 
   function realResourceNameFinder(targetname, result, resourcename) {
