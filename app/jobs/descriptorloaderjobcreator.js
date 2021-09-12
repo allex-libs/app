@@ -152,10 +152,15 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (!this.okToProceed()) {
       return;
     }
-    env = environmentFactory(envdesc);
-    name = envdesc.name;
-    this.destroyable.environments.add(name, env);
-    this.descriptorHandler.addEnvironmentName(name);
+    try {
+      env = environmentFactory(envdesc);
+      name = envdesc.name;
+      this.destroyable.environments.add(name, env);
+      this.descriptorHandler.addEnvironmentName(name);
+    } catch (e) {
+      console.error(e);
+      this.reject(e);
+    }
   };
   DescriptorLoaderJob.prototype.onAllDone = function () {
     var desc;
