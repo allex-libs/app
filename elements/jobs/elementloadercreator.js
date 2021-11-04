@@ -1,4 +1,4 @@
-function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
+function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler) {
   'use strict';
 
   var q = lib.q,
@@ -16,7 +16,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     JobOnDestroyable.prototype.resolve.call(this, thingy);
   };
   ElementLoaderJob.prototype.go = function () {
-    var ok = this.okToGo(), resreqs, resdescs, promises, p;
+    var ok = this.okToGo(), resreqs, resdescs, promises, p, intenvdesc;
     if (!ok.ok) {
       return ok.val;
     }
@@ -31,6 +31,12 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     }
     if (lib.isArray(resdescs)) {
       promises.push.apply(promises, resdescs.map(this.loadResourceParams.bind(this)));
+    }
+    if (!this.destroyable.integrationEnvironment) {
+      intenvdesc = this.destroyable.createIntegrationEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
+      if (intenvdesc) {
+        promises.push(this.loadIntegrationEnvironment(intenvdesc));
+      }
     }
     p = q.all(promises);
     qlib.promise2defer(p, this);
@@ -67,12 +73,31 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     this.destroyable.updateResource(resourcename);
   };
 
+  ElementLoaderJob.prototype.loadIntegrationEnvironment = function (intenvdesc) {
+    var pktp = this.peekToProceed(), env;
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    env = new DescriptorHandler(intenvdesc);
+    return env.load().then(
+      this.onIntegrationEnvironment.bind(this),
+      this.onIntegrationEnvironmentFailed.bind(this)
+    );
+  };
+  ElementLoaderJob.prototype.onIntegrationEnvironment = function (result) {
+    this.destroyable.integrationEnvironment = result;
+    return result;
+  };
+  ElementLoaderJob.prototype.onIntegrationEnvironmentFailed = function (reason) {
+    console.error(reason);
+    throw reason;
+  };
+
   ElementLoaderJob.prototype.fireLoadEvent = function () {
     var pktp = this.peekToProceed();
     if (!pktp.ok) {
       return pktp.val;
     }
-    this.destroyable.loadEvent.fire.apply(this.destroyable.loadEvent, arguments);
   };
 
 

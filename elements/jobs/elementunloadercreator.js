@@ -21,6 +21,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     if (lib.isArray(this.destroyable.resources)) {
       promises.concat(this.destroyable.resources.map(this.unloadResource.bind(this)));
     }
+    if (this.destroyable.integrationEnvironment) {
+      this.destroyable.integrationEnvironment.destroy();
+    }
+    this.destroyable.integrationEnvironment = null;
     qlib.promise2defer(q.all(promises), this);
     return ok.val;
   };

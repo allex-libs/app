@@ -18,6 +18,19 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     this.descriptorHandler = null;
     AppJob.prototype.destroy.call(this);
   };
+  DescriptorLoaderJob.prototype._destroyableOk = function () {
+    var ret = AppJob.prototype._destroyableOk.call(this);
+    if (!ret) {
+      return ret;
+    }
+    if (!this.descriptorHandler) {
+      throw new lib.Error('ALREADY_DESTROYED', 'No descriptorHandler');
+    }
+    if (!this.descriptorHandler.environmentNames) {
+      throw new lib.Error('DESCHANDLER_ALREADY_DESTROYED', 'No descriptorHandler.environmentNames');
+    }
+    return true;
+  };
   DescriptorLoaderJob.prototype.go = function () {
     var ok = this.okToGo(), desc;
     if (!ok.ok) {
@@ -31,11 +44,11 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     try {
       lib.traverseShallow (
         desc.datasources,
-        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
+        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, this.descriptorHandler)
       );
       lib.traverseShallow (
         desc.commands,
-        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
+        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, this.descriptorHandler)
       );
     } catch(e) {
       console.error(e);
@@ -153,10 +166,17 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       return;
     }
     try {
-      env = environmentFactory(envdesc);
       name = envdesc.name;
-      this.destroyable.environments.add(name, env);
-      this.descriptorHandler.addEnvironmentName(name);
+      env = this.destroyable.environments.get(name);
+      if (!env) {
+        env = environmentFactory(envdesc);
+        this.destroyable.environments.add(name, env);
+        this.descriptorHandler.environmentNames.push(name);
+      } else {
+        env.addDataSources(envdesc.options.datasources);
+        env.addCommands(envdesc.options.commands);
+        env.addDataCommands(envdesc.options.datacommands);
+      }
     } catch (e) {
       console.error(e);
       this.reject(e);
@@ -189,42 +209,54 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (item[fieldname] === val) return item;
   }
 
-  function linkDataSource (datasources, environments, desc, item) {
+  function linkDataSource (datasources, environments, deschandler, item) {
+    var source_name, desc, environment, e_datasource, ds;
     if (!item.name) throw new Error ('Datasource has no name: '+toString(item));
     if (!item.environment) throw new Error('Datasource has no environment: '+toString(item));
 
-    var source_name = item.source || item.name,
-      environment = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
+    desc = deschandler.descriptor;
+    source_name = item.source || item.name;
+    environment = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
 
     if (!environment) throw new Error('Unable to find environment descriptor '+item.environment);
-    var e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
+    e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
     if (!e_datasource) {
       e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
       if (!e_datasource)
         console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
+    ds = datasources.get(item.name);
+    if (ds) {
+      return;
+    }
+    ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
     datasources.add(item.name, ds);
+    deschandler.dataSourceNames.push(item.name);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 
 
-  function linkCommand (commands, environments, desc, item) {
-    var fc = null;
+  function linkCommand (commands, environments, deschandler, item) {
+    var fc = null, desc, e, c, c_name;
     if (!item.command) throw new Error('No command in '+toString(item));
+    desc = deschandler.descriptor;
+    fc = commands.get(item.command);
+    if (fc) {
+      return;
+    }
     if (lib.isFunction(item.handler)){
       fc = new FunctionCommand(item.command, item.handler);
     }else{
       if (!item.environment) throw new Error('No environment in '+toString(item));
-      var e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
+      e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
       if (!e && !lib.isFunction(item.handler)) throw new Error('Unable to find environment '+item.environment);
 
       if (!e && lib.isFunction (item.handler)) {
       }
 
-      var c_name = item.ecommand || item.command, 
-        c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
+      c_name = item.ecommand || item.command; 
+      c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
 
       if (!c) {
         c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
@@ -234,6 +266,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       fc = new Command (c_name);
       environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
     }
+    deschandler.commandNames.push(item.command);
     commands.add(item.command, fc);
   }
 

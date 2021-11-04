@@ -18,7 +18,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, DescriptorHandler),
     datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
     descriptorApi = require('./descriptorapi')(lib);

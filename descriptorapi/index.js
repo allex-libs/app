@@ -8,7 +8,8 @@ function createDescriptorApi (lib) {
     }
     arry = desc[arryname];
     if (!arry) {
-      return null;
+      arry = [];
+      desc[arryname] = arry;
     }
     elem = ArryOps.findElementWithProperty(arry, propertyname, arryelementname);
     if (!elem) {

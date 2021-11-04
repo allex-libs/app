@@ -116,8 +116,14 @@ function createDataSource (lib, dataSuite) {
     if (!this.environment || !this.environment.isEstablished()) return;
     var ds = this.environment.dataSources.get(this.source_name);
     if (!ds) {
-      return; ///no datasource ...
+      this.environment.dataSources.waitFor(this.source_name).then(
+        this._doTheBindingToDS.bind(this)
+      );
+      return;
     }
+    this._doTheBindingToDS(ds);
+  };
+  AppSideDataSource.prototype._doTheBindingToDS = function (ds) {
     ds.setFilter(this.filter);
     ds.setTarget(this);
     this.set('running', true);

@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -14,7 +14,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, Resources),
+    jobs = require('./jobs')(lib, Resources, DescriptorHandler),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 
@@ -46,6 +46,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
+    this.integrationEnvironment = null;
     this._addHook ('onInitialized');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
@@ -164,9 +165,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.createElement = function (desc) {
     BasicElement.createElement(desc, this.addChild.bind(this));
-  };
-  BasicElement.prototype.onElementCreated = function (chld) {
-    this.addChild(chld);
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -376,6 +374,19 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     }
     hook.destroy();
     hook = null;
+  };
+
+  BasicElement.prototype.createIntegrationEnvironmentDescriptor = function () {
+    return null;
+  };
+
+  BasicElement.prototype.myNameOnMasterEnvironment = function () {
+    var ret = this.id, parent = this.__parent;
+    while(parent) {
+      ret = parent.id+'.'+ret;
+      parent = parent.__parent;
+    }
+    return ret;
   };
 
   BasicElement.prototype.preInitializationMethodNames = [];

@@ -14,12 +14,16 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     this.descriptor = descriptor;
     this.app = ourlib.App;
     this.environmentNames = [];
+    this.dataSourceNames = [];
+    this.commandNames = [];
     this.elementIDs = [];
   }
   LinksAndLogicDestroyableMixin.addMethods(DescriptorHandler);
   DescriptorHandler.prototype.destroy = function () {
     this.unload();
     this.elementIDs = null;
+    this.commandNames = null;
+    this.dataSourceNames = null;
     this.environmentNames = null;
     this.app = null;
     this.descriptor = null;
@@ -35,6 +39,14 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     if (!this.app) {
       return q(true);
     }
+    if (lib.isArray(this.dataSourceNames)) {
+      this.dataSourceNames.forEach(destroyMapElement.bind(null, this.app.datasources));
+      this.dataSourceNames = [];
+    }
+    if (lib.isArray(this.commandNames)) {
+      this.commandNames.forEach(destroyMapElement.bind(null, this.app.commands));
+      this.commandNames = [];
+    }
     if (lib.isArray(this.environmentNames)) {
       this.environmentNames.forEach(destroyMapElement.bind(null, this.app.environments));
       this.environmentNames = [];
@@ -47,9 +59,6 @@ function createDescriptorHandler (lib, mixins, ourlib) {
   };
   DescriptorHandler.prototype.addElementID = function (id) {
     this.elementIDs.push(id);
-  };
-  DescriptorHandler.prototype.addEnvironmentName = function (name) {
-    this.environmentNames.push(name);
   };
 
   function destroyMapElement (map, elementid) {

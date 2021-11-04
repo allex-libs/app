@@ -446,8 +446,14 @@ function createDataSource (lib, dataSuite) {
     if (!this.environment || !this.environment.isEstablished()) return;
     var ds = this.environment.dataSources.get(this.source_name);
     if (!ds) {
-      return; ///no datasource ...
+      this.environment.dataSources.waitFor(this.source_name).then(
+        this._doTheBindingToDS.bind(this)
+      );
+      return;
     }
+    this._doTheBindingToDS(ds);
+  };
+  AppSideDataSource.prototype._doTheBindingToDS = function (ds) {
     ds.setFilter(this.filter);
     ds.setTarget(this);
     this.set('running', true);
@@ -585,6 +591,19 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     this.descriptorHandler = null;
     AppJob.prototype.destroy.call(this);
   };
+  DescriptorLoaderJob.prototype._destroyableOk = function () {
+    var ret = AppJob.prototype._destroyableOk.call(this);
+    if (!ret) {
+      return ret;
+    }
+    if (!this.descriptorHandler) {
+      throw new lib.Error('ALREADY_DESTROYED', 'No descriptorHandler');
+    }
+    if (!this.descriptorHandler.environmentNames) {
+      throw new lib.Error('DESCHANDLER_ALREADY_DESTROYED', 'No descriptorHandler.environmentNames');
+    }
+    return true;
+  };
   DescriptorLoaderJob.prototype.go = function () {
     var ok = this.okToGo(), desc;
     if (!ok.ok) {
@@ -598,11 +617,11 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     try {
       lib.traverseShallow (
         desc.datasources,
-        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, desc)
+        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, this.descriptorHandler)
       );
       lib.traverseShallow (
         desc.commands,
-        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, desc)
+        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, this.descriptorHandler)
       );
     } catch(e) {
       console.error(e);
@@ -720,10 +739,17 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       return;
     }
     try {
-      env = environmentFactory(envdesc);
       name = envdesc.name;
-      this.destroyable.environments.add(name, env);
-      this.descriptorHandler.addEnvironmentName(name);
+      env = this.destroyable.environments.get(name);
+      if (!env) {
+        env = environmentFactory(envdesc);
+        this.destroyable.environments.add(name, env);
+        this.descriptorHandler.environmentNames.push(name);
+      } else {
+        env.addDataSources(envdesc.options.datasources);
+        env.addCommands(envdesc.options.commands);
+        env.addDataCommands(envdesc.options.datacommands);
+      }
     } catch (e) {
       console.error(e);
       this.reject(e);
@@ -756,42 +782,54 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     if (item[fieldname] === val) return item;
   }
 
-  function linkDataSource (datasources, environments, desc, item) {
+  function linkDataSource (datasources, environments, deschandler, item) {
+    var source_name, desc, environment, e_datasource, ds;
     if (!item.name) throw new Error ('Datasource has no name: '+toString(item));
     if (!item.environment) throw new Error('Datasource has no environment: '+toString(item));
 
-    var source_name = item.source || item.name,
-      environment = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
+    desc = deschandler.descriptor;
+    source_name = item.source || item.name;
+    environment = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
 
     if (!environment) throw new Error('Unable to find environment descriptor '+item.environment);
-    var e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
+    e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
     if (!e_datasource) {
       e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
       if (!e_datasource)
         console.warn('Unable to find datasource '+source_name+' within environment description');
     }
 
-    var ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
+    ds = datasources.get(item.name);
+    if (ds) {
+      return;
+    }
+    ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
     datasources.add(item.name, ds);
+    deschandler.dataSourceNames.push(item.name);
     environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
   }
 
 
-  function linkCommand (commands, environments, desc, item) {
-    var fc = null;
+  function linkCommand (commands, environments, deschandler, item) {
+    var fc = null, desc, e, c, c_name;
     if (!item.command) throw new Error('No command in '+toString(item));
+    desc = deschandler.descriptor;
+    fc = commands.get(item.command);
+    if (fc) {
+      return;
+    }
     if (lib.isFunction(item.handler)){
       fc = new FunctionCommand(item.command, item.handler);
     }else{
       if (!item.environment) throw new Error('No environment in '+toString(item));
-      var e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
+      e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
       if (!e && !lib.isFunction(item.handler)) throw new Error('Unable to find environment '+item.environment);
 
       if (!e && lib.isFunction (item.handler)) {
       }
 
-      var c_name = item.ecommand || item.command, 
-        c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
+      c_name = item.ecommand || item.command; 
+      c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
 
       if (!c) {
         c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
@@ -801,6 +839,7 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
       fc = new Command (c_name);
       environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
     }
+    deschandler.commandNames.push(item.command);
     commands.add(item.command, fc);
   }
 
@@ -1258,7 +1297,8 @@ function createDescriptorApi (lib) {
     }
     arry = desc[arryname];
     if (!arry) {
-      return null;
+      arry = [];
+      desc[arryname] = arry;
     }
     elem = ArryOps.findElementWithProperty(arry, propertyname, arryelementname);
     if (!elem) {
@@ -1288,7 +1328,7 @@ function createDescriptorApi (lib) {
 module.exports = createDescriptorApi;
     
 
-},{"allex_arrayoperationslowlevellib":31}],17:[function(require,module,exports){
+},{"allex_arrayoperationslowlevellib":41}],17:[function(require,module,exports){
 function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
   var q = lib.q,
@@ -1305,12 +1345,16 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     this.descriptor = descriptor;
     this.app = ourlib.App;
     this.environmentNames = [];
+    this.dataSourceNames = [];
+    this.commandNames = [];
     this.elementIDs = [];
   }
   LinksAndLogicDestroyableMixin.addMethods(DescriptorHandler);
   DescriptorHandler.prototype.destroy = function () {
     this.unload();
     this.elementIDs = null;
+    this.commandNames = null;
+    this.dataSourceNames = null;
     this.environmentNames = null;
     this.app = null;
     this.descriptor = null;
@@ -1326,6 +1370,14 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     if (!this.app) {
       return q(true);
     }
+    if (lib.isArray(this.dataSourceNames)) {
+      this.dataSourceNames.forEach(destroyMapElement.bind(null, this.app.datasources));
+      this.dataSourceNames = [];
+    }
+    if (lib.isArray(this.commandNames)) {
+      this.commandNames.forEach(destroyMapElement.bind(null, this.app.commands));
+      this.commandNames = [];
+    }
     if (lib.isArray(this.environmentNames)) {
       this.environmentNames.forEach(destroyMapElement.bind(null, this.app.environments));
       this.environmentNames = [];
@@ -1338,9 +1390,6 @@ function createDescriptorHandler (lib, mixins, ourlib) {
   };
   DescriptorHandler.prototype.addElementID = function (id) {
     this.elementIDs.push(id);
-  };
-  DescriptorHandler.prototype.addEnvironmentName = function (name) {
-    this.environmentNames.push(name);
   };
 
   function destroyMapElement (map, elementid) {
@@ -1363,7 +1412,7 @@ function createDescriptorHandler (lib, mixins, ourlib) {
 module.exports = createDescriptorHandler;
 
 },{}],18:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -1379,7 +1428,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, Resources),
+    jobs = require('./jobs')(lib, Resources, DescriptorHandler),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 
@@ -1411,6 +1460,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
+    this.integrationEnvironment = null;
     this._addHook ('onInitialized');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
@@ -1529,9 +1579,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.createElement = function (desc) {
     BasicElement.createElement(desc, this.addChild.bind(this));
-  };
-  BasicElement.prototype.onElementCreated = function (chld) {
-    this.addChild(chld);
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -1743,6 +1790,19 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     hook = null;
   };
 
+  BasicElement.prototype.createIntegrationEnvironmentDescriptor = function () {
+    return null;
+  };
+
+  BasicElement.prototype.myNameOnMasterEnvironment = function () {
+    var ret = this.id, parent = this.__parent;
+    while(parent) {
+      ret = parent.id+'.'+ret;
+      parent = parent.__parent;
+    }
+    return ret;
+  };
+
   BasicElement.prototype.preInitializationMethodNames = [];
   BasicElement.prototype.postInitializationMethodNames = [];
 
@@ -1752,11 +1812,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 module.exports = createBasicElement;
 
 },{"./jobs":22}],19:[function(require,module,exports){
-function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor) {
+function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor, DescriptorHandler) {
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler);
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -1788,7 +1848,7 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
 module.exports = createElements;
 
 },{"./basicelementcreator.js":18}],20:[function(require,module,exports){
-function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
+function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler) {
   'use strict';
 
   var q = lib.q,
@@ -1806,7 +1866,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     JobOnDestroyable.prototype.resolve.call(this, thingy);
   };
   ElementLoaderJob.prototype.go = function () {
-    var ok = this.okToGo(), resreqs, resdescs, promises, p;
+    var ok = this.okToGo(), resreqs, resdescs, promises, p, intenvdesc;
     if (!ok.ok) {
       return ok.val;
     }
@@ -1821,6 +1881,12 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     }
     if (lib.isArray(resdescs)) {
       promises.push.apply(promises, resdescs.map(this.loadResourceParams.bind(this)));
+    }
+    if (!this.destroyable.integrationEnvironment) {
+      intenvdesc = this.destroyable.createIntegrationEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
+      if (intenvdesc) {
+        promises.push(this.loadIntegrationEnvironment(intenvdesc));
+      }
     }
     p = q.all(promises);
     qlib.promise2defer(p, this);
@@ -1857,12 +1923,31 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources) {
     this.destroyable.updateResource(resourcename);
   };
 
+  ElementLoaderJob.prototype.loadIntegrationEnvironment = function (intenvdesc) {
+    var pktp = this.peekToProceed(), env;
+    if (!pktp.ok) {
+      return pktp.val;
+    }
+    env = new DescriptorHandler(intenvdesc);
+    return env.load().then(
+      this.onIntegrationEnvironment.bind(this),
+      this.onIntegrationEnvironmentFailed.bind(this)
+    );
+  };
+  ElementLoaderJob.prototype.onIntegrationEnvironment = function (result) {
+    this.destroyable.integrationEnvironment = result;
+    return result;
+  };
+  ElementLoaderJob.prototype.onIntegrationEnvironmentFailed = function (reason) {
+    console.error(reason);
+    throw reason;
+  };
+
   ElementLoaderJob.prototype.fireLoadEvent = function () {
     var pktp = this.peekToProceed();
     if (!pktp.ok) {
       return pktp.val;
     }
-    this.destroyable.loadEvent.fire.apply(this.destroyable.loadEvent, arguments);
   };
 
 
@@ -1900,6 +1985,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     if (lib.isArray(this.destroyable.resources)) {
       promises.concat(this.destroyable.resources.map(this.unloadResource.bind(this)));
     }
+    if (this.destroyable.integrationEnvironment) {
+      this.destroyable.integrationEnvironment.destroy();
+    }
+    this.destroyable.integrationEnvironment = null;
     qlib.promise2defer(q.all(promises), this);
     return ok.val;
   };
@@ -1933,13 +2022,13 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
 module.exports = createElementUnloaderJob;
 
 },{}],22:[function(require,module,exports){
-function createElementJobs (lib, Resources) {
+function createElementJobs (lib, Resources, DescriptorHandler) {
   'use strict';
 
   var JobOnDestroyable = lib.qlib.JobOnDestroyable;
 
   return {
-    ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources),
+    ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources, DescriptorHandler),
     ElementUnloaderJob : require('./elementunloadercreator')(lib, JobOnDestroyable, Resources)
   };
 
@@ -1968,7 +2057,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, DescriptorHandler),
     datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
     descriptorApi = require('./descriptorapi')(lib);
@@ -2160,7 +2249,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
 
 module.exports = libCreator;
 
-},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":24,"./mixins":27,"./modifiers":30,"./preprocessingregistry":33,"./preprocessors":40,"./resources":41}],24:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":24,"./mixins":27,"./modifiers":30,"./preprocessingregistry":32,"./preprocessors":39,"./resources":40}],24:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -2968,6 +3057,700 @@ function createModifiers (execlib, mixins, misc) {
 module.exports = createModifiers;
 
 },{}],31:[function(require,module,exports){
+function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
+  'use strict';
+
+  /**
+   * @class
+   * @memberOf allex_applib
+   * @classdesc
+   * The base class for Processors (PreProcessors and PrePreProcessors).
+   *
+   * Processors work like this:
+   *
+   * #### Inherit from BasicProcessor
+   * The only method you _need_ to implement is `process (desc)`.
+   * In this implementation you will alter the given descriptor `desc`.
+   *
+   * This alteration may need to take care about the particular configuration 
+   * that was specified in the descriptor `desc`.
+   *
+   * When your `process` method is called, your configuration will not be in `desc` any more,
+   * for consistency/sanity/security reasons.
+   * Instead, it will be in `this.config` of your Class.
+   *
+   * #### Register
+   * Depending on the nature of your Processor,
+   * call {@link allex_applib.registerPrePreprocessor}
+   * or {@link allex_applib.registerPreprocessor} with
+   * 1. the name you're registering under (a String, like `'MySpecialProcessor'`)
+   * 2. the class you produced when you inherited from BasicProcessor
+   *
+   * **Note**: the call will result in an _instance_ of your class
+   * being registered under the name you provided.
+   * 
+   * That is why the constructor of BasicProcessor (and all the classes that inherit from it)
+   * does not take any parameters.
+   *
+   * #### Configure
+   * In the descriptor of the App or Element (may depend on the very nature of
+   * a particular Processor, because certain Processors may be built for use only on App descriptors),
+   * configure the (pre)preprocessor.
+   *
+   * The configuration for both preprocessors and prepreprocessors is an Object.
+   * It maps the configurations to registered names of (pre)preprocessors.
+   *
+   * Example for the `preprocessors` configuration:
+   * ```javascript
+   *  {
+   *    ...
+   *    links: [...],
+   *    logic: [...],
+   *    preprocessors: {
+   *      MySpecialProcessor: {
+   *        color: 'red',
+   *        rows: 5,
+   *        columns: 8
+   *      }
+   *    }
+   *  }
+   * ```
+   *
+   * Example for the `prepreprocessors` configuration:
+   * ```javascript
+   *  {
+   *    ...
+   *    links: [...],
+   *    logic: [...],
+   *    prepreprocessors: {
+   *      MySpecialPreProcessor: {
+   *        role: 'admin',
+   *        height: 50,
+   *        apply: true
+   *      }
+   *    }
+   *  }
+   * ```
+   *
+   * In the case of `prepreprocessors`, the configuration object **may also** be an array of objects, like
+   * ```javascript
+   *  {
+   *    ...
+   *    links: [...],
+   *    logic: [...],
+   *    prepreprocessors: [{
+   *      MyInitPrePreprocessor: {
+   *        automaticlogin: false,
+   *        usehttps: true
+   *      }
+   *    },
+   *    {
+   *      MySpecialPreProcessor: {
+   *        role: 'admin',
+   *        height: 50,
+   *        apply: true
+   *      }
+   *    }]
+   *  }
+   * ```
+   * This is because you may need to perform prepreprocessing on the given descriptor in several phases,
+   * so the preprocessors may need to perform their `process`ing in phases.
+   * Each configuration object in the configuration array will define a prepreprocessing phase
+   * by defining prepreprocessors that need to run in the given phase - with their appropriate
+   * configurations.
+   *
+   */
+  function BasicProcessor () {
+    NeededConfigurationNamesMixin.call(this);
+    this.config = null;
+  } 
+  NeededConfigurationNamesMixin.addMethods(BasicProcessor);
+  BasicProcessor.prototype.destroy = function () {
+    this.config = null;
+    NeededConfigurationNamesMixin.prototype.destroy.call(this);
+  };
+  /**
+   * @function 
+   * @abstract
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.process = function (desc) {
+    throw new Error('Not implemented');
+  };
+  /**
+   * @function 
+   * @param {String} name The name of the registered Preprocessor
+   * @param {Object} config The config for the PreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePreprocessor = null;
+  /**
+   * @function 
+   * @param {String} name The name of the registered PrePreprocessor
+   * @param {Object} config The config for the PrePreProcessor registered by `name`
+   * @param {Object} desc The App/Element descriptor to be processed
+   */
+  BasicProcessor.prototype.firePrePreprocessor = null;
+
+
+  /**
+   * @function
+   * @param {Object} config The configuration object - obtained from the descriptor 
+   * that is to be `process`ed.
+   *
+   * This method is called internally, during the process of building the App
+   * from the descriptor.
+   */
+  BasicProcessor.prototype.configure = function (config) {
+    this.checkNeededConfigurationNames(config);
+    this.config = config;
+  };
+
+  BasicProcessor.prototype.isAppDesc = function (desc) {
+    return !desc.type;
+  };
+  BasicProcessor.prototype.elementsOf = function (desc) {
+    return this.isAppDesc(desc) ? desc.elements : desc.options.elements;
+  };
+  BasicProcessor.prototype.elementReferenceStringOf = function (desc, str) {
+    return this.isAppDesc(desc) ? ('element.'+str) : ('.'+str);
+  };
+
+  /**
+   * PreProcessingRegistryBase is a specialization of {@link allex://allex_maplowlevellib.Map|Map}
+   * that introduces methods
+   * - {@link allex://allex_applib.PreProcessingRegistryBase#process|process}
+   * - {@link allex://allex_applib.PreProcessingRegistryBase#register|register}
+   *
+   * @class
+   * @memberof allex_applib
+   */
+  function PreProcessingRegistryBase () {
+    lib.Map.call(this);
+  }
+  lib.inherit(PreProcessingRegistryBase, lib.Map);
+  /**
+   * Registers an __instance__ (_not the class!_) of the (Pre)PreProcessor class provided
+   * under a given `name`.
+   *
+   * @function
+   * @param {String} name Name of the (Pre)PreProcessor class to register
+   * @param {Function} ctor The (Pre)PreProcessor class constructor to register
+   */
+  PreProcessingRegistryBase.prototype.register = function (name, ctor) {
+    var instance = new ctor();
+    if (!(instance instanceof BasicProcessor)) throw new Error('PreProcessor must be instance of BasicProcessor');
+
+    //console.log(this.constructor.name, 'add', name);
+    this.add (name, instance);
+  };
+  /**
+   * @function
+   * @param {Object} desc The App/Element descriptor to process
+   */
+  PreProcessingRegistryBase.prototype.process = function (desc) {
+    if (!this.targetDescriptorSectionName) {
+      throw new Error(this.constructor.name+' cannot process a descriptor because it has no targetDescriptorSectionName');
+    }
+    if (!(this.targetDescriptorSectionName in desc)) {
+      return lib.q(true);
+    }
+    var configs = desc[this.targetDescriptorSectionName];
+    desc[this.targetDescriptorSectionName] = null;
+    return this.processOn(desc, configs);
+  };
+  PreProcessingRegistryBase.prototype.processOn = function (desc, configs) {
+    if (lib.isArray(configs)) {
+      if (!this.allowArrayConfigs()) {
+        throw new Error('configs cannot be an Array');
+      }
+      configs.forEach(_doProcessForEach.bind(null, this, desc));
+    } else {
+      _doProcessForEach(this, desc, configs);
+    }
+    return lib.q(true);
+  };
+  /**
+   * Returns `true` if an Array of configuration objects is allowed
+   *
+   * @function
+   * @returns `false`
+   */
+  PreProcessingRegistryBase.prototype.allowArrayConfigs = function () {
+    return false;
+  };
+
+  function _doProcessForEach(registry, desc, configs) {
+    lib.traverseShallow(configs, _doProcess.bind(null, registry, desc));
+  }
+
+  function _doProcess(registry, desc, config, configname) {
+    var preprocessor = registry.get(configname);
+    if (!preprocessor) {
+      console.warn(registry.constructor.name, 'has no processor registered for name', configname);
+      return;
+    }
+    preprocessor.configure(config);
+    preprocessor.process(desc);
+  }
+
+  return {
+    PreProcessingRegistryBase: PreProcessingRegistryBase,
+    BasicProcessor: BasicProcessor,
+    _doProcess: _doProcess
+  };
+}
+
+module.exports = createPreProcessingRegistry;
+
+},{}],32:[function(require,module,exports){
+function createPreProcessingRegistries (lib, mixins) {
+  'use strict';
+
+  var plib = require('./basecreator')(lib, mixins.NeededConfigurationNamesMixin),
+    BasicProcessor = plib.BasicProcessor,
+    RegistryBase = plib.PreProcessingRegistry;
+
+  return {
+    _doProcess: plib._doProcess,
+    BasicProcessor: BasicProcessor,
+    PreProcessors: require('./preprocessingregistrycreator.js')(lib, plib.PreProcessingRegistryBase),
+    PrePreProcessors: require('./prepreprocessingregistrycreator')(lib, plib.PreProcessingRegistryBase)
+  };
+}
+
+module.exports = createPreProcessingRegistries;
+
+},{"./basecreator":31,"./prepreprocessingregistrycreator":33,"./preprocessingregistrycreator.js":34}],33:[function(require,module,exports){
+function createPrePreProcessor (lib, PreProcessingRegistryBase) {
+  'use strict';
+
+  /**
+   * Specialization of {@link allex_applib.PreProcessingRegistryBase}
+   * that targets the `prepreprocessors` App/Element descriptor secion.
+   *
+   * It allows for an Array of configuration objects.
+   *
+   * @class
+   * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
+   */
+  function PrePreProcessingRegistry () {
+    PreProcessingRegistryBase.call(this);
+  }
+  lib.inherit(PrePreProcessingRegistry, PreProcessingRegistryBase);
+  /**
+   * Provides for the `prepreprocessors` name of the target
+   * for the configurations within the descriptor
+   *
+   * @member
+   */
+  PrePreProcessingRegistry.prototype.targetDescriptorSectionName = 'prepreprocessors';
+  /**
+   * Overrides {@link allex://allex_applib.PreProcessingRegistryBase#allowArrayConfigs|PreProcessingRegistryBase.allowArrayConfigs}
+   * to allow for an Array of configuration objects.
+   *
+   * @function
+   * @returns `true`
+   */
+  PrePreProcessingRegistry.prototype.allowArrayConfigs = function () {
+    return true;
+  };
+
+
+  return new PrePreProcessingRegistry();
+
+}
+module.exports = createPrePreProcessor;
+
+},{}],34:[function(require,module,exports){
+function createPreProcessor (lib, PreProcessingRegistryBase) {
+  'use strict';
+
+  /**
+   * @class
+   * @memberof allex_applib
+   * @augments allex_applib.PreProcessingRegistryBase
+   * @classdesc
+   * Specialization of {@link allex_applib.PreProcessingRegistryBase}
+   * that targets the `preprocessors` App/Element descriptor secion.
+   *
+   * It doesn't allow for an Array of configuration objects.
+   *
+   */
+  function PreProcessingRegistry () {
+    PreProcessingRegistryBase.call(this);
+  }
+  lib.inherit(PreProcessingRegistry, PreProcessingRegistryBase);
+  /**
+   * Provides for the `preprocessors` name of the target
+   * for the configurations within the descriptor
+   *
+   * @member
+   */
+  PreProcessingRegistry.prototype.targetDescriptorSectionName = 'preprocessors';
+
+
+  return new PreProcessingRegistry();
+
+}
+module.exports = createPreProcessor;
+
+},{}],35:[function(require,module,exports){
+function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
+  'use strict';
+
+  /**
+   * Specializes the {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
+   *
+   * @class
+   * @memberof allex_applib
+   */
+  function CommandPreprocessor () {
+    EnvironmentHelperPreprocessor.call(this);
+  }
+  lib.inherit(CommandPreprocessor, EnvironmentHelperPreprocessor);
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'commands'` value.
+   *
+   * @member
+   * @override
+   */
+  CommandPreprocessor.prototype.environmentOptionsTarget = 'commands';
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
+   *
+   * @member
+   * @override
+   */
+  CommandPreprocessor.prototype.appTarget = [{objdest: 'command', dest: 'commands'}];
+
+  preprocessingregistrylib.PreProcessors.register('Command', CommandPreprocessor);
+}
+
+module.exports = createCommandPreprocessor;
+
+},{}],36:[function(require,module,exports){
+function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
+  'use strict';
+
+  /**
+   * Specializes the {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
+   *
+   * @class
+   * @memberof allex_applib
+   */
+  function DataCommandPreprocessor () {
+    EnvironmentHelperPreprocessor.call(this);
+  }
+  lib.inherit(DataCommandPreprocessor, EnvironmentHelperPreprocessor);
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'datacommands'` value.
+   *
+   * @member
+   * @override
+   */
+  DataCommandPreprocessor.prototype.environmentOptionsTarget = 'datacommands';
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
+   *
+   * @member
+   * @override
+   */
+  DataCommandPreprocessor.prototype.appTarget = [{objdest: 'name', dest: 'datasources'}, {objdest: 'command', dest: 'commands'}];
+
+  preprocessingregistrylib.PreProcessors.register('DataCommand', DataCommandPreprocessor);
+}
+
+module.exports = createDataCommandPreprocessor;
+
+},{}],37:[function(require,module,exports){
+function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
+  'use strict';
+
+  /**
+   *
+   * Specializes the
+   * {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
+   * in order to specify
+   * - {@link allex://allex_applib.DataSourcePreprocessor#environmentOptionsTarget|environmentOptionsTarget}
+   * - {@link allex://allex_applib.DataSourcePreprocessor#appTarget|appTarget}
+   *
+   * @class
+   * @memberof allex_applib
+   */
+
+  function DataSourcePreprocessor () {
+    EnvironmentHelperPreprocessor.call(this);
+  }
+  lib.inherit(DataSourcePreprocessor, EnvironmentHelperPreprocessor);
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#environmentOptionsTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'datasources'` value.
+   *
+   * @member
+   * @override
+   */
+  DataSourcePreprocessor.prototype.environmentOptionsTarget = 'datasources';
+  /**
+   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
+   *
+   * @member
+   * @override
+   */
+  DataSourcePreprocessor.prototype.appTarget = {objdest: 'name', dest: 'datasources'};
+
+  preprocessingregistrylib.PreProcessors.register('DataSource', DataSourcePreprocessor);
+}
+
+module.exports = createDataSourcePreprocessor;
+
+},{}],38:[function(require,module,exports){
+function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
+  'use strict';
+
+  var BasicProcessor = preprocessingregistrylib.BasicProcessor;
+
+  /**
+   * There are several external resources that can and should be described 
+   * in the App descriptor:
+   * - Data sources
+   * - Commands
+   * - Data commands
+   *
+   * All these resources share a pattern for description:
+   * 1. Describe the resource in the appropriate Environment section 
+   * 2. Describe the resource in the appropriate App descriptor's section
+   * (`datasources`, `commands` or `datacommands`)
+   *
+   * The pattern above is covered by this class.
+   *
+   * ### Configuration
+   * A single configuration object (they may come in Arrays)
+   * needs to have 2 properties:
+   * - `environment`
+   * - `entity`
+   *
+   * `environment` is just a string that denotes the name of the environment
+   * where the Resource should be defined
+   *
+   * `entity` is the appropriate configuration hash for the Resource on the environment.
+   *
+   * @class
+   * @memberof allex_applib
+   */
+  function EnvironmentHelperPreprocessor () {
+    BasicProcessor.call(this);
+  }
+  lib.inherit(EnvironmentHelperPreprocessor, BasicProcessor);
+
+  EnvironmentHelperPreprocessor.prototype.process = function (desc) {
+    if (lib.isArray(this.config)) {
+      this.config.forEach(processConf.bind(null, this, desc));
+      return;
+    }
+    processConf(this, desc, this.config);
+  };
+  function processConf (pp, desc, conf) {
+    var targetenv;
+    if (!conf.entity.name) {
+      throw new Error('entity section of the configuration must have a name');
+    }
+    targetenv = descriptorApi.ensureDescriptorArrayElementByName(desc, 'environments', conf.environment);
+    if (!targetenv.options) {
+      targetenv.options = {};
+    }
+    if (!lib.isArray(targetenv.options[pp.environmentOptionsTarget])) {
+      targetenv.options[pp.environmentOptionsTarget] = [];
+    }
+    targetenv.options[pp.environmentOptionsTarget].push(conf.entity);
+    if (lib.isArray(pp.appTarget)) {
+      pp.appTarget.forEach(putToApp.bind(null, pp, desc, conf));
+      return;
+    }
+    putToApp(pp, desc, conf, pp.appTarget);
+  };
+  function putToApp (pp, desc, conf, destdesc) {
+    var appobj = lib.extend({}, desc.app, {
+      environment: conf.environment
+    }, conf.app_options);
+    appobj[destdesc.objdest] = conf.entity.name;
+    if (!lib.isArray(desc[destdesc.dest])) {
+      desc[destdesc.dest] = [];
+    }
+    desc[destdesc.dest].push(appobj);
+  }
+  /**
+   * This member needs to be overriden in order to define
+   * the Environment secton that will get the Resource descriptor.
+   * 
+   * It has to be a string, namely
+   * `datasources`, `commands` or `datacommands`,
+   * and each descendant class of EnvironmentHelperPreprocessor
+   * will be defining one of these values.
+   *
+   * @member
+   */
+  EnvironmentHelperPreprocessor.prototype.neededConfigurationNames = ['environment', 'entity'];
+  EnvironmentHelperPreprocessor.prototype.environmentOptionsTarget = null; //e.g. 'datasources' or 'commands'
+  /**
+   * This member needs to be overriden in order to define
+   * what app descriptor sections should get a reference
+   * to the entity described in the `environments` section.
+   *
+   * If not `null`, it should be an Object with the following properties:
+   * - `objdest`
+   * - `dest`
+   *
+   * or an Array of such Objects.
+   *
+   *
+   * @member
+   */
+  EnvironmentHelperPreprocessor.prototype.appTarget = null; //e.g. {objdest: 'name', dest: 'datasources'}
+
+  return EnvironmentHelperPreprocessor; //this one is not registered
+
+}
+
+module.exports = createEnvironmentHelperPreprocessor;
+
+},{}],39:[function(require,module,exports){
+function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
+  'use strict';
+
+  var EnvironmentHelperPreprocessor = require('./environmenthelpercreator')(lib, preprocessingregistrylib, descriptorApi);
+
+  require('./datasourcecreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
+  require('./datacommandcreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
+  require('./commandcreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
+
+}
+
+module.exports = createPreProcessors;
+
+},{"./commandcreator":35,"./datacommandcreator":36,"./datasourcecreator":37,"./environmenthelpercreator":38}],40:[function(require,module,exports){
+function createResourcesModule (lib) {
+  var q = lib.q,
+    ResourceTypeRegistry = new lib.Map (),
+    ResourceRegistry = new lib.DIContainer (),
+    ResourceParams = new lib.Map ();
+
+  function resourceFactory (app, desc) {
+    var ctor, instance, promise;
+    console.log('creating Resource', desc.name||desc.type, 'with options', desc.options);
+    ctor = ResourceTypeRegistry.get(desc.type);
+    if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+desc.type));
+    instance = new ctor(desc.options, app);
+    promise = instance._load(desc.lazy);
+    ResourceRegistry.register (desc.name||desc.type, {instance: instance, promise : promise});
+    return promise;
+  }
+
+  function loadResourceParams (desc) {
+    ResourceParams.replace(desc.name||desc.type, lib.extendWithConcat(
+      ResourceParams.get(desc.name||desc.type) || {},
+      desc
+    ));
+  }
+
+  function BasicResourceLoader (options) {
+    lib.Configurable.call(this, options);
+    this._loading_defer = null;
+  }
+  lib.inherit (BasicResourceLoader, lib.Configurable);
+  BasicResourceLoader.prototype.destroy = function () {
+    this._loading_defer = null; //TODO: samo?
+    lib.Configurable.prototype.destroy.call(this);
+  };
+
+  //lazy should be subject to review ...
+  BasicResourceLoader.prototype._load = function (lazy) {
+    if (this.loadOnDemand()){
+      //do not load until explicit load command is issued ...
+      return lazy ? q.resolve('ok') : this.load();
+    }else{
+      //load anyway, signal that it is ready right away ...
+      var ret = this.load();
+      return lazy ? q.resolve('ok') : ret;
+    }
+  };
+
+
+  BasicResourceLoader.prototype.load = function () {
+    if (!this._loading_defer) {
+      //we are not loading ... 
+      this._loading_defer = this.doLoad();
+    }
+    return this._loading_defer.promise;
+  };
+
+  BasicResourceLoader.prototype.doLoad = function () {
+    /// return a defer which will be stored in _loading_defer
+    throw new Error ('Not implemented');
+  };
+
+
+  BasicResourceLoader.prototype.unload = function () {
+    if (this.getConfigVal('ispermanent')) {
+      console.log('Resource should never be unloaded ...');
+      return;
+    }
+    this._loading_defer = null;
+    this.doUnload();
+  };
+
+  BasicResourceLoader.prototype.doUnload = function () {
+    ///TODO ...
+  };
+  BasicResourceLoader.prototype.loadOnDemand = function () { return false; }
+  BasicResourceLoader.getResourceFromName = function (name) {
+    return getResource(name);
+  };
+
+  BasicResourceLoader.getResourcesFromNames = function (names) {
+    if (!lib.isArray(names)) throw new Error ('Must be an array');
+    return names.map (getResource);
+  };
+
+  function getResource (name) {
+    var c = ResourceRegistry.get(name);
+    return c ? c.instance : null;
+  }
+
+  function afterWait (item) {
+    return q(item ? (item.instance || null) : null);
+  }
+  function waitForResource (name) {
+    return ResourceRegistry.waitFor(name).then(afterWait);
+  }
+
+  function destroyResource (name) {
+    var c = ResourceRegistry.remove(name);
+    if (c) {
+      if (c.instance) {
+        c.instance.destroy();
+      }
+      //TODO: the promise has to reject finally
+    }
+  }
+
+  return {
+    registerResourceType : ResourceTypeRegistry.add.bind(ResourceTypeRegistry),
+    getResourceType : ResourceTypeRegistry.get.bind(ResourceTypeRegistry),
+    resourceFactory : resourceFactory,
+    loadResourceParams : loadResourceParams,
+    getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
+    waitForResource: waitForResource,
+    destroyResource : destroyResource,
+    BasicResourceLoader : BasicResourceLoader,
+    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry),
+    traverseResourceParams : ResourceParams.traverse.bind(ResourceParams)
+  }
+}
+
+module.exports = createResourcesModule;
+
+},{}],41:[function(require,module,exports){
 module.exports = function createArryOperations(extend, readPropertyFromDotDelimitedString, isFunction, Map, AllexJSONizingError) {
   function union(a1, a2) {
     var ret = a1.slice();
@@ -3296,699 +4079,5 @@ module.exports = function createArryOperations(extend, readPropertyFromDotDelimi
   };
   return ret;
 }; 
-
-},{}],32:[function(require,module,exports){
-function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
-  'use strict';
-
-  /**
-   * @class
-   * @memberOf allex_applib
-   * @classdesc
-   * The base class for Processors (PreProcessors and PrePreProcessors).
-   *
-   * Processors work like this:
-   *
-   * #### Inherit from BasicProcessor
-   * The only method you _need_ to implement is `process (desc)`.
-   * In this implementation you will alter the given descriptor `desc`.
-   *
-   * This alteration may need to take care about the particular configuration 
-   * that was specified in the descriptor `desc`.
-   *
-   * When your `process` method is called, your configuration will not be in `desc` any more,
-   * for consistency/sanity/security reasons.
-   * Instead, it will be in `this.config` of your Class.
-   *
-   * #### Register
-   * Depending on the nature of your Processor,
-   * call {@link allex_applib.registerPrePreprocessor}
-   * or {@link allex_applib.registerPreprocessor} with
-   * 1. the name you're registering under (a String, like `'MySpecialProcessor'`)
-   * 2. the class you produced when you inherited from BasicProcessor
-   *
-   * **Note**: the call will result in an _instance_ of your class
-   * being registered under the name you provided.
-   * 
-   * That is why the constructor of BasicProcessor (and all the classes that inherit from it)
-   * does not take any parameters.
-   *
-   * #### Configure
-   * In the descriptor of the App or Element (may depend on the very nature of
-   * a particular Processor, because certain Processors may be built for use only on App descriptors),
-   * configure the (pre)preprocessor.
-   *
-   * The configuration for both preprocessors and prepreprocessors is an Object.
-   * It maps the configurations to registered names of (pre)preprocessors.
-   *
-   * Example for the `preprocessors` configuration:
-   * ```javascript
-   *  {
-   *    ...
-   *    links: [...],
-   *    logic: [...],
-   *    preprocessors: {
-   *      MySpecialProcessor: {
-   *        color: 'red',
-   *        rows: 5,
-   *        columns: 8
-   *      }
-   *    }
-   *  }
-   * ```
-   *
-   * Example for the `prepreprocessors` configuration:
-   * ```javascript
-   *  {
-   *    ...
-   *    links: [...],
-   *    logic: [...],
-   *    prepreprocessors: {
-   *      MySpecialPreProcessor: {
-   *        role: 'admin',
-   *        height: 50,
-   *        apply: true
-   *      }
-   *    }
-   *  }
-   * ```
-   *
-   * In the case of `prepreprocessors`, the configuration object **may also** be an array of objects, like
-   * ```javascript
-   *  {
-   *    ...
-   *    links: [...],
-   *    logic: [...],
-   *    prepreprocessors: [{
-   *      MyInitPrePreprocessor: {
-   *        automaticlogin: false,
-   *        usehttps: true
-   *      }
-   *    },
-   *    {
-   *      MySpecialPreProcessor: {
-   *        role: 'admin',
-   *        height: 50,
-   *        apply: true
-   *      }
-   *    }]
-   *  }
-   * ```
-   * This is because you may need to perform prepreprocessing on the given descriptor in several phases,
-   * so the preprocessors may need to perform their `process`ing in phases.
-   * Each configuration object in the configuration array will define a prepreprocessing phase
-   * by defining prepreprocessors that need to run in the given phase - with their appropriate
-   * configurations.
-   *
-   */
-  function BasicProcessor () {
-    NeededConfigurationNamesMixin.call(this);
-    this.config = null;
-  } 
-  NeededConfigurationNamesMixin.addMethods(BasicProcessor);
-  BasicProcessor.prototype.destroy = function () {
-    this.config = null;
-    NeededConfigurationNamesMixin.prototype.destroy.call(this);
-  };
-  /**
-   * @function 
-   * @abstract
-   * @param {Object} desc The App/Element descriptor to be processed
-   */
-  BasicProcessor.prototype.process = function (desc) {
-    throw new Error('Not implemented');
-  };
-  /**
-   * @function 
-   * @param {String} name The name of the registered Preprocessor
-   * @param {Object} config The config for the PreProcessor registered by `name`
-   * @param {Object} desc The App/Element descriptor to be processed
-   */
-  BasicProcessor.prototype.firePreprocessor = null;
-  /**
-   * @function 
-   * @param {String} name The name of the registered PrePreprocessor
-   * @param {Object} config The config for the PrePreProcessor registered by `name`
-   * @param {Object} desc The App/Element descriptor to be processed
-   */
-  BasicProcessor.prototype.firePrePreprocessor = null;
-
-
-  /**
-   * @function
-   * @param {Object} config The configuration object - obtained from the descriptor 
-   * that is to be `process`ed.
-   *
-   * This method is called internally, during the process of building the App
-   * from the descriptor.
-   */
-  BasicProcessor.prototype.configure = function (config) {
-    this.checkNeededConfigurationNames(config);
-    this.config = config;
-  };
-
-  BasicProcessor.prototype.isAppDesc = function (desc) {
-    return !desc.type;
-  };
-  BasicProcessor.prototype.elementsOf = function (desc) {
-    return this.isAppDesc(desc) ? desc.elements : desc.options.elements;
-  };
-  BasicProcessor.prototype.elementReferenceStringOf = function (desc, str) {
-    return this.isAppDesc(desc) ? ('element.'+str) : ('.'+str);
-  };
-
-  /**
-   * PreProcessingRegistryBase is a specialization of {@link allex://allex_maplowlevellib.Map|Map}
-   * that introduces methods
-   * - {@link allex://allex_applib.PreProcessingRegistryBase#process|process}
-   * - {@link allex://allex_applib.PreProcessingRegistryBase#register|register}
-   *
-   * @class
-   * @memberof allex_applib
-   */
-  function PreProcessingRegistryBase () {
-    lib.Map.call(this);
-  }
-  lib.inherit(PreProcessingRegistryBase, lib.Map);
-  /**
-   * Registers an __instance__ (_not the class!_) of the (Pre)PreProcessor class provided
-   * under a given `name`.
-   *
-   * @function
-   * @param {String} name Name of the (Pre)PreProcessor class to register
-   * @param {Function} ctor The (Pre)PreProcessor class constructor to register
-   */
-  PreProcessingRegistryBase.prototype.register = function (name, ctor) {
-    var instance = new ctor();
-    if (!(instance instanceof BasicProcessor)) throw new Error('PreProcessor must be instance of BasicProcessor');
-
-    //console.log(this.constructor.name, 'add', name);
-    this.add (name, instance);
-  };
-  /**
-   * @function
-   * @param {Object} desc The App/Element descriptor to process
-   */
-  PreProcessingRegistryBase.prototype.process = function (desc) {
-    if (!this.targetDescriptorSectionName) {
-      throw new Error(this.constructor.name+' cannot process a descriptor because it has no targetDescriptorSectionName');
-    }
-    if (!(this.targetDescriptorSectionName in desc)) {
-      return lib.q(true);
-    }
-    var configs = desc[this.targetDescriptorSectionName];
-    desc[this.targetDescriptorSectionName] = null;
-    return this.processOn(desc, configs);
-  };
-  PreProcessingRegistryBase.prototype.processOn = function (desc, configs) {
-    if (lib.isArray(configs)) {
-      if (!this.allowArrayConfigs()) {
-        throw new Error('configs cannot be an Array');
-      }
-      configs.forEach(_doProcessForEach.bind(null, this, desc));
-    } else {
-      _doProcessForEach(this, desc, configs);
-    }
-    return lib.q(true);
-  };
-  /**
-   * Returns `true` if an Array of configuration objects is allowed
-   *
-   * @function
-   * @returns `false`
-   */
-  PreProcessingRegistryBase.prototype.allowArrayConfigs = function () {
-    return false;
-  };
-
-  function _doProcessForEach(registry, desc, configs) {
-    lib.traverseShallow(configs, _doProcess.bind(null, registry, desc));
-  }
-
-  function _doProcess(registry, desc, config, configname) {
-    var preprocessor = registry.get(configname);
-    if (!preprocessor) {
-      console.warn(registry.constructor.name, 'has no processor registered for name', configname);
-      return;
-    }
-    preprocessor.configure(config);
-    preprocessor.process(desc);
-  }
-
-  return {
-    PreProcessingRegistryBase: PreProcessingRegistryBase,
-    BasicProcessor: BasicProcessor,
-    _doProcess: _doProcess
-  };
-}
-
-module.exports = createPreProcessingRegistry;
-
-},{}],33:[function(require,module,exports){
-function createPreProcessingRegistries (lib, mixins) {
-  'use strict';
-
-  var plib = require('./basecreator')(lib, mixins.NeededConfigurationNamesMixin),
-    BasicProcessor = plib.BasicProcessor,
-    RegistryBase = plib.PreProcessingRegistry;
-
-  return {
-    _doProcess: plib._doProcess,
-    BasicProcessor: BasicProcessor,
-    PreProcessors: require('./preprocessingregistrycreator.js')(lib, plib.PreProcessingRegistryBase),
-    PrePreProcessors: require('./prepreprocessingregistrycreator')(lib, plib.PreProcessingRegistryBase)
-  };
-}
-
-module.exports = createPreProcessingRegistries;
-
-},{"./basecreator":32,"./prepreprocessingregistrycreator":34,"./preprocessingregistrycreator.js":35}],34:[function(require,module,exports){
-function createPrePreProcessor (lib, PreProcessingRegistryBase) {
-  'use strict';
-
-  /**
-   * Specialization of {@link allex_applib.PreProcessingRegistryBase}
-   * that targets the `prepreprocessors` App/Element descriptor secion.
-   *
-   * It allows for an Array of configuration objects.
-   *
-   * @class
-   * @memberof allex_applib
-   * @augments allex_applib.PreProcessingRegistryBase
-   */
-  function PrePreProcessingRegistry () {
-    PreProcessingRegistryBase.call(this);
-  }
-  lib.inherit(PrePreProcessingRegistry, PreProcessingRegistryBase);
-  /**
-   * Provides for the `prepreprocessors` name of the target
-   * for the configurations within the descriptor
-   *
-   * @member
-   */
-  PrePreProcessingRegistry.prototype.targetDescriptorSectionName = 'prepreprocessors';
-  /**
-   * Overrides {@link allex://allex_applib.PreProcessingRegistryBase#allowArrayConfigs|PreProcessingRegistryBase.allowArrayConfigs}
-   * to allow for an Array of configuration objects.
-   *
-   * @function
-   * @returns `true`
-   */
-  PrePreProcessingRegistry.prototype.allowArrayConfigs = function () {
-    return true;
-  };
-
-
-  return new PrePreProcessingRegistry();
-
-}
-module.exports = createPrePreProcessor;
-
-},{}],35:[function(require,module,exports){
-function createPreProcessor (lib, PreProcessingRegistryBase) {
-  'use strict';
-
-  /**
-   * @class
-   * @memberof allex_applib
-   * @augments allex_applib.PreProcessingRegistryBase
-   * @classdesc
-   * Specialization of {@link allex_applib.PreProcessingRegistryBase}
-   * that targets the `preprocessors` App/Element descriptor secion.
-   *
-   * It doesn't allow for an Array of configuration objects.
-   *
-   */
-  function PreProcessingRegistry () {
-    PreProcessingRegistryBase.call(this);
-  }
-  lib.inherit(PreProcessingRegistry, PreProcessingRegistryBase);
-  /**
-   * Provides for the `preprocessors` name of the target
-   * for the configurations within the descriptor
-   *
-   * @member
-   */
-  PreProcessingRegistry.prototype.targetDescriptorSectionName = 'preprocessors';
-
-
-  return new PreProcessingRegistry();
-
-}
-module.exports = createPreProcessor;
-
-},{}],36:[function(require,module,exports){
-function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
-  'use strict';
-
-  /**
-   * Specializes the {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
-   *
-   * @class
-   * @memberof allex_applib
-   */
-  function CommandPreprocessor () {
-    EnvironmentHelperPreprocessor.call(this);
-  }
-  lib.inherit(CommandPreprocessor, EnvironmentHelperPreprocessor);
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'commands'` value.
-   *
-   * @member
-   * @override
-   */
-  CommandPreprocessor.prototype.environmentOptionsTarget = 'commands';
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
-   *
-   * @member
-   * @override
-   */
-  CommandPreprocessor.prototype.appTarget = [{objdest: 'command', dest: 'commands'}];
-
-  preprocessingregistrylib.PreProcessors.register('Command', CommandPreprocessor);
-}
-
-module.exports = createCommandPreprocessor;
-
-},{}],37:[function(require,module,exports){
-function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
-  'use strict';
-
-  /**
-   * Specializes the {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
-   *
-   * @class
-   * @memberof allex_applib
-   */
-  function DataCommandPreprocessor () {
-    EnvironmentHelperPreprocessor.call(this);
-  }
-  lib.inherit(DataCommandPreprocessor, EnvironmentHelperPreprocessor);
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'datacommands'` value.
-   *
-   * @member
-   * @override
-   */
-  DataCommandPreprocessor.prototype.environmentOptionsTarget = 'datacommands';
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
-   *
-   * @member
-   * @override
-   */
-  DataCommandPreprocessor.prototype.appTarget = [{objdest: 'name', dest: 'datasources'}, {objdest: 'command', dest: 'commands'}];
-
-  preprocessingregistrylib.PreProcessors.register('DataCommand', DataCommandPreprocessor);
-}
-
-module.exports = createDataCommandPreprocessor;
-
-},{}],38:[function(require,module,exports){
-function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
-  'use strict';
-
-  /**
-   *
-   * Specializes the
-   * {@link allex://allex_applib.EnvironmentHelperPreprocessor|EnvironmentHelperPreprocessor}
-   * in order to specify
-   * - {@link allex://allex_applib.DataSourcePreprocessor#environmentOptionsTarget|environmentOptionsTarget}
-   * - {@link allex://allex_applib.DataSourcePreprocessor#appTarget|appTarget}
-   *
-   * @class
-   * @memberof allex_applib
-   */
-
-  function DataSourcePreprocessor () {
-    EnvironmentHelperPreprocessor.call(this);
-  }
-  lib.inherit(DataSourcePreprocessor, EnvironmentHelperPreprocessor);
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#environmentOptionsTarget|EnvironmentHelperPreprocessor.environmentOptionsTarget} with the `'datasources'` value.
-   *
-   * @member
-   * @override
-   */
-  DataSourcePreprocessor.prototype.environmentOptionsTarget = 'datasources';
-  /**
-   * Overrides {@link allex://allex_applib.EnvironmentHelperPreprocessor#appTarget|EnvironmentHelperPreprocessor.appTarget}
-   *
-   * @member
-   * @override
-   */
-  DataSourcePreprocessor.prototype.appTarget = {objdest: 'name', dest: 'datasources'};
-
-  preprocessingregistrylib.PreProcessors.register('DataSource', DataSourcePreprocessor);
-}
-
-module.exports = createDataSourcePreprocessor;
-
-},{}],39:[function(require,module,exports){
-function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
-  'use strict';
-
-  var BasicProcessor = preprocessingregistrylib.BasicProcessor;
-
-  /**
-   * There are several external resources that can and should be described 
-   * in the App descriptor:
-   * - Data sources
-   * - Commands
-   * - Data commands
-   *
-   * All these resources share a pattern for description:
-   * 1. Describe the resource in the appropriate Environment section 
-   * 2. Describe the resource in the appropriate App descriptor's section
-   * (`datasources`, `commands` or `datacommands`)
-   *
-   * The pattern above is covered by this class.
-   *
-   * ### Configuration
-   * A single configuration object (they may come in Arrays)
-   * needs to have 2 properties:
-   * - `environment`
-   * - `entity`
-   *
-   * `environment` is just a string that denotes the name of the environment
-   * where the Resource should be defined
-   *
-   * `entity` is the appropriate configuration hash for the Resource on the environment.
-   *
-   * @class
-   * @memberof allex_applib
-   */
-  function EnvironmentHelperPreprocessor () {
-    BasicProcessor.call(this);
-  }
-  lib.inherit(EnvironmentHelperPreprocessor, BasicProcessor);
-
-  EnvironmentHelperPreprocessor.prototype.process = function (desc) {
-    if (lib.isArray(this.config)) {
-      this.config.forEach(processConf.bind(null, this, desc));
-      return;
-    }
-    processConf(this, desc, this.config);
-  };
-  function processConf (pp, desc, conf) {
-    var targetenv;
-    if (!conf.entity.name) {
-      throw new Error('entity section of the configuration must have a name');
-    }
-    targetenv = descriptorApi.ensureDescriptorArrayElementByName(desc, 'environments', conf.environment);
-    if (!targetenv.options) {
-      targetenv.options = {};
-    }
-    if (!lib.isArray(targetenv.options[pp.environmentOptionsTarget])) {
-      targetenv.options[pp.environmentOptionsTarget] = [];
-    }
-    targetenv.options[pp.environmentOptionsTarget].push(conf.entity);
-    if (lib.isArray(pp.appTarget)) {
-      pp.appTarget.forEach(putToApp.bind(null, pp, desc, conf));
-      return;
-    }
-    putToApp(pp, desc, conf, pp.appTarget);
-  };
-  function putToApp (pp, desc, conf, destdesc) {
-    var appobj = lib.extend({}, desc.app, {
-      environment: conf.environment
-    }, conf.app_options);
-    appobj[destdesc.objdest] = conf.entity.name;
-    if (!lib.isArray(desc[destdesc.dest])) {
-      desc[destdesc.dest] = [];
-    }
-    desc[destdesc.dest].push(appobj);
-  }
-  /**
-   * This member needs to be overriden in order to define
-   * the Environment secton that will get the Resource descriptor.
-   * 
-   * It has to be a string, namely
-   * `datasources`, `commands` or `datacommands`,
-   * and each descendant class of EnvironmentHelperPreprocessor
-   * will be defining one of these values.
-   *
-   * @member
-   */
-  EnvironmentHelperPreprocessor.prototype.neededConfigurationNames = ['environment', 'entity'];
-  EnvironmentHelperPreprocessor.prototype.environmentOptionsTarget = null; //e.g. 'datasources' or 'commands'
-  /**
-   * This member needs to be overriden in order to define
-   * what app descriptor sections should get a reference
-   * to the entity described in the `environments` section.
-   *
-   * If not `null`, it should be an Object with the following properties:
-   * - `objdest`
-   * - `dest`
-   *
-   * or an Array of such Objects.
-   *
-   *
-   * @member
-   */
-  EnvironmentHelperPreprocessor.prototype.appTarget = null; //e.g. {objdest: 'name', dest: 'datasources'}
-
-  return EnvironmentHelperPreprocessor; //this one is not registered
-
-}
-
-module.exports = createEnvironmentHelperPreprocessor;
-
-},{}],40:[function(require,module,exports){
-function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
-  'use strict';
-
-  var EnvironmentHelperPreprocessor = require('./environmenthelpercreator')(lib, preprocessingregistrylib, descriptorApi);
-
-  require('./datasourcecreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
-  require('./datacommandcreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
-  require('./commandcreator')(lib, preprocessingregistrylib, EnvironmentHelperPreprocessor);
-
-}
-
-module.exports = createPreProcessors;
-
-},{"./commandcreator":36,"./datacommandcreator":37,"./datasourcecreator":38,"./environmenthelpercreator":39}],41:[function(require,module,exports){
-function createResourcesModule (lib) {
-  var q = lib.q,
-    ResourceTypeRegistry = new lib.Map (),
-    ResourceRegistry = new lib.DIContainer (),
-    ResourceParams = new lib.Map ();
-
-  function resourceFactory (app, desc) {
-    var ctor, instance, promise;
-    console.log('creating Resource', desc.name||desc.type, 'with options', desc.options);
-    ctor = ResourceTypeRegistry.get(desc.type);
-    if (!lib.isFunction(ctor)) return q.reject(new Error('Unable to find resource type '+desc.type));
-    instance = new ctor(desc.options, app);
-    promise = instance._load(desc.lazy);
-    ResourceRegistry.register (desc.name||desc.type, {instance: instance, promise : promise});
-    return promise;
-  }
-
-  function loadResourceParams (desc) {
-    ResourceParams.replace(desc.name||desc.type, lib.extendWithConcat(
-      ResourceParams.get(desc.name||desc.type) || {},
-      desc
-    ));
-  }
-
-  function BasicResourceLoader (options) {
-    lib.Configurable.call(this, options);
-    this._loading_defer = null;
-  }
-  lib.inherit (BasicResourceLoader, lib.Configurable);
-  BasicResourceLoader.prototype.destroy = function () {
-    this._loading_defer = null; //TODO: samo?
-    lib.Configurable.prototype.destroy.call(this);
-  };
-
-  //lazy should be subject to review ...
-  BasicResourceLoader.prototype._load = function (lazy) {
-    if (this.loadOnDemand()){
-      //do not load until explicit load command is issued ...
-      return lazy ? q.resolve('ok') : this.load();
-    }else{
-      //load anyway, signal that it is ready right away ...
-      var ret = this.load();
-      return lazy ? q.resolve('ok') : ret;
-    }
-  };
-
-
-  BasicResourceLoader.prototype.load = function () {
-    if (!this._loading_defer) {
-      //we are not loading ... 
-      this._loading_defer = this.doLoad();
-    }
-    return this._loading_defer.promise;
-  };
-
-  BasicResourceLoader.prototype.doLoad = function () {
-    /// return a defer which will be stored in _loading_defer
-    throw new Error ('Not implemented');
-  };
-
-
-  BasicResourceLoader.prototype.unload = function () {
-    if (this.getConfigVal('ispermanent')) {
-      console.log('Resource should never be unloaded ...');
-      return;
-    }
-    this._loading_defer = null;
-    this.doUnload();
-  };
-
-  BasicResourceLoader.prototype.doUnload = function () {
-    ///TODO ...
-  };
-  BasicResourceLoader.prototype.loadOnDemand = function () { return false; }
-  BasicResourceLoader.getResourceFromName = function (name) {
-    return getResource(name);
-  };
-
-  BasicResourceLoader.getResourcesFromNames = function (names) {
-    if (!lib.isArray(names)) throw new Error ('Must be an array');
-    return names.map (getResource);
-  };
-
-  function getResource (name) {
-    var c = ResourceRegistry.get(name);
-    return c ? c.instance : null;
-  }
-
-  function afterWait (item) {
-    return q(item ? (item.instance || null) : null);
-  }
-  function waitForResource (name) {
-    return ResourceRegistry.waitFor(name).then(afterWait);
-  }
-
-  function destroyResource (name) {
-    var c = ResourceRegistry.remove(name);
-    if (c) {
-      if (c.instance) {
-        c.instance.destroy();
-      }
-      //TODO: the promise has to reject finally
-    }
-  }
-
-  return {
-    registerResourceType : ResourceTypeRegistry.add.bind(ResourceTypeRegistry),
-    getResourceType : ResourceTypeRegistry.get.bind(ResourceTypeRegistry),
-    resourceFactory : resourceFactory,
-    loadResourceParams : loadResourceParams,
-    getResource : getResource,//ResourceRegistry.get.bind(ResourceRegistry),
-    waitForResource: waitForResource,
-    destroyResource : destroyResource,
-    BasicResourceLoader : BasicResourceLoader,
-    traverseResources : ResourceRegistry.traverse.bind(ResourceRegistry),
-    traverseResourceParams : ResourceParams.traverse.bind(ResourceParams)
-  }
-}
-
-module.exports = createResourcesModule;
 
 },{}]},{},[10]);
