@@ -93,8 +93,6 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     //(new applib.DescriptorHandler(ALLEX_CONFIGURATION.APP)).load();
   }
 
-  Elements.registerElementType ('BasicElement', Elements.BasicElement);
-
   RESULT.mixins = mixins;
   RESULT.DescriptorHandler = DescriptorHandler;
   /**

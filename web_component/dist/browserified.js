@@ -1816,7 +1816,8 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler),
+    mylib;
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -1837,12 +1838,15 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
     return ElementTypeRegistry.get(type);
   }
 
-  return {
+  registerElementType ('BasicElement', BasicElement);
+
+  mylib =  {
     BasicElement : BasicElement,
     elementFactory : elementFactory,
     registerElementType : registerElementType,
     getElementType : getElementType
-  }
+  };
+  return mylib;
 }
 
 module.exports = createElements;
@@ -2131,8 +2135,6 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     );
     //(new applib.DescriptorHandler(ALLEX_CONFIGURATION.APP)).load();
   }
-
-  Elements.registerElementType ('BasicElement', Elements.BasicElement);
 
   RESULT.mixins = mixins;
   RESULT.DescriptorHandler = DescriptorHandler;
@@ -2727,9 +2729,9 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     this.logicFromLinking = null;
   };
   LinksAndLogicDestroyableMixin.prototype.destroy = function () {
-    destroyArrayOfLinks(this.linksFromLinking);
+    this.destroyArrayOfLinks(this.linksFromLinking);
     this.linksFromLinking = null;
-    destroyArrayOfLogic(this.logicFromLinking);
+    this.destroyArrayOfLogic(this.logicFromLinking);
     this.logicFromLinking = null;
   };
   /**
@@ -2737,7 +2739,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    * @param {Array} links An Array of created Link objects
    */
   LinksAndLogicDestroyableMixin.prototype.setLinks = function (links) {
-    destroyArrayOfLinks(this.linksFromLinking);
+    this.destroyArrayOfLinks(this.linksFromLinking);
     this.linksFromLinking = links;
     return q(links);
   };
@@ -2746,9 +2748,23 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    * @param {Array} links An Array of created Logic objects
    */
   LinksAndLogicDestroyableMixin.prototype.setLogic = function (logic) {
-    destroyArrayOfLogic(this.logicFromLinking);
+    this.destroyArrayOfLogic(this.logicFromLinking);
     this.logicFromLinking = logic;
     return q(logic);
+  };
+  /**
+   * @function
+   * @param {Array} links An Array of created Link objects
+   */
+  LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLinks = function (links) {
+    if (lib.isArray(links)) {
+      links.forEach(destroyLink);
+    }
+  };
+  LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLogic = function (logics) {
+    if (lib.isArray(logics)) {
+      logics.forEach(destroyLogic);
+    }
   };
 
 
@@ -2756,28 +2772,16 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     lib.inheritMethods(klass, LinksAndLogicDestroyableMixin
       ,'setLinks'
       ,'setLogic'
+      ,'destroyArrayOfLinks'
+      ,'destroyArrayOfLogic'
     );
   };
 
-  /**
-   * @function
-   * @param {Array} links An Array of created Link objects
-   */
-  function destroyArrayOfLinks (links) {
-    if (lib.isArray(links)) {
-      links.forEach(destroyLink);
-    }
-  }
 
   function destroyLink (link) {
     console.log('should destroy link', link);
   }
 
-  function destroyArrayOfLogic (logics) {
-    if (lib.isArray(logics)) {
-      logics.forEach(destroyLogic);
-    }
-  }
   /** 
    * @function
    * @alias LinksAndLogicDestroyableMixin~destroyLogic

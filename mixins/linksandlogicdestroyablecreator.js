@@ -21,9 +21,9 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     this.logicFromLinking = null;
   };
   LinksAndLogicDestroyableMixin.prototype.destroy = function () {
-    destroyArrayOfLinks(this.linksFromLinking);
+    this.destroyArrayOfLinks(this.linksFromLinking);
     this.linksFromLinking = null;
-    destroyArrayOfLogic(this.logicFromLinking);
+    this.destroyArrayOfLogic(this.logicFromLinking);
     this.logicFromLinking = null;
   };
   /**
@@ -31,7 +31,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    * @param {Array} links An Array of created Link objects
    */
   LinksAndLogicDestroyableMixin.prototype.setLinks = function (links) {
-    destroyArrayOfLinks(this.linksFromLinking);
+    this.destroyArrayOfLinks(this.linksFromLinking);
     this.linksFromLinking = links;
     return q(links);
   };
@@ -40,9 +40,23 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    * @param {Array} links An Array of created Logic objects
    */
   LinksAndLogicDestroyableMixin.prototype.setLogic = function (logic) {
-    destroyArrayOfLogic(this.logicFromLinking);
+    this.destroyArrayOfLogic(this.logicFromLinking);
     this.logicFromLinking = logic;
     return q(logic);
+  };
+  /**
+   * @function
+   * @param {Array} links An Array of created Link objects
+   */
+  LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLinks = function (links) {
+    if (lib.isArray(links)) {
+      links.forEach(destroyLink);
+    }
+  };
+  LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLogic = function (logics) {
+    if (lib.isArray(logics)) {
+      logics.forEach(destroyLogic);
+    }
   };
 
 
@@ -50,28 +64,16 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     lib.inheritMethods(klass, LinksAndLogicDestroyableMixin
       ,'setLinks'
       ,'setLogic'
+      ,'destroyArrayOfLinks'
+      ,'destroyArrayOfLogic'
     );
   };
 
-  /**
-   * @function
-   * @param {Array} links An Array of created Link objects
-   */
-  function destroyArrayOfLinks (links) {
-    if (lib.isArray(links)) {
-      links.forEach(destroyLink);
-    }
-  }
 
   function destroyLink (link) {
     console.log('should destroy link', link);
   }
 
-  function destroyArrayOfLogic (logics) {
-    if (lib.isArray(logics)) {
-      logics.forEach(destroyLogic);
-    }
-  }
   /** 
    * @function
    * @alias LinksAndLogicDestroyableMixin~destroyLogic

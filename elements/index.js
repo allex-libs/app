@@ -2,7 +2,8 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
   'use strict';
 
   var ElementTypeRegistry = new lib.Map (),
-    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler);
+    BasicElement = require('./basicelementcreator.js')(lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, mixins.LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler),
+    mylib;
 
   function elementFactory (desc) {
     var type = desc.type;
@@ -23,12 +24,15 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
     return ElementTypeRegistry.get(type);
   }
 
-  return {
+  registerElementType ('BasicElement', BasicElement);
+
+  mylib =  {
     BasicElement : BasicElement,
     elementFactory : elementFactory,
     registerElementType : registerElementType,
     getElementType : getElementType
-  }
+  };
+  return mylib;
 }
 
 module.exports = createElements;
