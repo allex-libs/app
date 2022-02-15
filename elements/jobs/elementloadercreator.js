@@ -39,7 +39,11 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
       }
     }
     p = q.all(promises);
-    qlib.promise2defer(p, this);
+    //qlib.promise2defer(p, this);
+    p.then(
+      this.createLateElements.bind(this),
+      this.reject.bind(this)
+    );
     return ok.val;
   };
 
@@ -93,13 +97,46 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     throw reason;
   };
 
+  ElementLoaderJob.prototype.createLateElements = function (resultuptonow) {
+    var lateelemdescs;
+    if (!this.okToProceed()) {
+      return;
+    }
+    if (!this.destroyable.lateElementsCreated) {
+      lateelemdescs = this.destroyable.lateElementDescriptors();
+      if (lib.isArray(lateelemdescs)) {
+        q.all(lateelemdescs.map(this.createLateElement.bind(this))).then(
+          this.onLateElementsCreated.bind(this, resultuptonow),
+          this.reject.bind(this)
+        );
+        return;
+      }
+    }
+    this.resolve(resultuptonow);
+  };
+  ElementLoaderJob.prototype.createLateElement = function (lateelemdesc) {
+    var elem = this.destroyable.createElement(lateelemdesc), d = q.defer(), ret = d.promise;
+    elem.loadEvent.attachForSingleShot(elemLoaded.bind(null, d));
+    d = null;
+    return ret;
+  };
+  function elemLoaded (defer, elem) {
+    defer.resolve(elem);
+  }
+  ElementLoaderJob.prototype.onLateElementsCreated = function (firststageresult, lateelemsresult) {
+    if (!this.okToProceed()) {
+      return;
+    }
+    this.destroyable.lateElementsCreated = true;
+    this.resolve(firststageresult.concat(lateelemsresult));
+  };
+
   ElementLoaderJob.prototype.fireLoadEvent = function () {
     var pktp = this.peekToProceed();
     if (!pktp.ok) {
       return pktp.val;
     }
   };
-
 
   function resourceLoader (resource) {
     console.log('got resource', resource, 'will load it');

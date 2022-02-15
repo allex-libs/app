@@ -47,6 +47,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
     this.integrationEnvironment = null;
+    this.lateElementsCreated = null;
     this._addHook ('onInitialized');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
@@ -57,6 +58,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
+    this.lateElementsCreated = null;
+    this.integrationEnvironment = null;
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -164,7 +167,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.createElement = function (desc) {
-    BasicElement.createElement(desc, this.addChild.bind(this));
+    return BasicElement.createElement(desc, this.addChild.bind(this));
   };
 
   BasicElement.prototype.set_actual = function (val) {
@@ -293,6 +296,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     el._link = new Linker.LinkingEnvironment(el);
     el._link.produceLinks(desc.links).then(el.setLinks.bind(el));
     el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
+    return el;
     } catch (e) {
       console.error('Could not create element from desc', desc);
       console.error(e);
@@ -377,6 +381,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.createIntegrationEnvironmentDescriptor = function () {
+    return null;
+  };
+  BasicElement.prototype.lateElementDescriptors = function () {
     return null;
   };
 
