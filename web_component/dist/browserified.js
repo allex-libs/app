@@ -1454,7 +1454,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.resourcedescs = null;
     this.resourcereqs = null;
     this.resourcealiases = null;
-    this._loading_promise = null;
     this.loadEvent = this.createBufferableHookCollection(); //new lib.HookCollection();
     this.loading = false;
     this.initialized = false;
@@ -1487,7 +1486,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.loadEvent.destroy();
     this.loadEvent = null;
 
-    this._loading_promise = null;
     this.initialized = null;
     this.loading = null;
     if (this.resourcealiases) {
@@ -1530,19 +1528,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   function handleLoading (be, newactual) {
-    if (newactual) {
-      if (!be._loading_promise) {
-        be.set('loading', true);
-        be._loading_promise = be.load();
-        be._loading_promise.then(be.onLoaded.bind(be), be.onLoadFailed.bind(be), be.onLoadProgress.bind(be));
-      }
-    }else{
-      if (be._loading_promise) {
-        be._loading_promise = null;
-        be.unload();
-      }
-      be.onUnloaded();
-    }
+    be[newactual ? 'load' : 'unload']();
   };
 
   function preInitialize (elem) {
@@ -1870,6 +1856,9 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
   }
   lib.inherit(ElementLoaderJob, JobOnDestroyable);
   ElementLoaderJob.prototype.destroy = function () {
+    if (this.destroyable) {
+      this.destroyable.onLoaded();
+    }
     JobOnDestroyable.prototype.destroy.call(this);
   };
   ElementLoaderJob.prototype.resolve = function (thingy) {
@@ -1881,6 +1870,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     if (!ok.ok) {
       return ok.val;
     }
+    this.destroyable.set('loading', true);
     promises = [];
     resreqs = this.destroyable.resourcereqs;
     resdescs = this.destroyable.resourcedescs;
@@ -2020,6 +2010,11 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     JobOnDestroyable.call (this, el, defer);
   }
   lib.inherit(ElementUnloaderJob, JobOnDestroyable);
+  ElementUnloaderJob.prototype.destroy = function () {
+    if (this.destroyable) {
+      this.destroyable.onUnloaded();
+    }
+  };
   ElementUnloaderJob.prototype.go = function () {
     var ok = this.okToGo();
     if (!ok.ok) {

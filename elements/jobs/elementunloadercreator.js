@@ -8,6 +8,11 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     JobOnDestroyable.call (this, el, defer);
   }
   lib.inherit(ElementUnloaderJob, JobOnDestroyable);
+  ElementUnloaderJob.prototype.destroy = function () {
+    if (this.destroyable) {
+      this.destroyable.onUnloaded();
+    }
+  };
   ElementUnloaderJob.prototype.go = function () {
     var ok = this.okToGo();
     if (!ok.ok) {

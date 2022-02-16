@@ -9,6 +9,9 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
   }
   lib.inherit(ElementLoaderJob, JobOnDestroyable);
   ElementLoaderJob.prototype.destroy = function () {
+    if (this.destroyable) {
+      this.destroyable.onLoaded();
+    }
     JobOnDestroyable.prototype.destroy.call(this);
   };
   ElementLoaderJob.prototype.resolve = function (thingy) {
@@ -20,6 +23,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     if (!ok.ok) {
       return ok.val;
     }
+    this.destroyable.set('loading', true);
     promises = [];
     resreqs = this.destroyable.resourcereqs;
     resdescs = this.destroyable.resourcedescs;
