@@ -9,14 +9,23 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
   }
   lib.inherit(ElementLoaderJob, JobOnDestroyable);
   ElementLoaderJob.prototype.destroy = function () {
-    if (this.destroyable) {
-      this.destroyable.onLoaded();
-    }
     JobOnDestroyable.prototype.destroy.call(this);
   };
   ElementLoaderJob.prototype.resolve = function (thingy) {
-    this.fireLoadEvent(true);
+    if (this.destroyable) {
+      try {
+        this.destroyable.onLoaded();
+      } catch(e) {
+        this.reject(e);
+        return;
+      }
+    }
     JobOnDestroyable.prototype.resolve.call(this, thingy);
+  };
+  ElementLoaderJob.prototype.reject = function (reason) {
+    console.error('Element loading failed for', this.destroyable.id, this.destroyable.constructor.name);
+    console.error(reason);
+    JobOnDestroyable.prototype.reject.call(this, reason);
   };
   ElementLoaderJob.prototype.go = function () {
     var ok = this.okToGo(), resreqs, resdescs, promises, p, intenvdesc;
@@ -37,9 +46,15 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
       promises.push.apply(promises, resdescs.map(this.loadResourceParams.bind(this)));
     }
     if (!this.destroyable.integrationEnvironment) {
-      intenvdesc = this.destroyable.createIntegrationEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
-      if (intenvdesc) {
-        promises.push(this.loadIntegrationEnvironment(intenvdesc));
+      try {
+        intenvdesc = this.destroyable.createIntegrationEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
+        if (intenvdesc) {
+          promises.push(this.loadIntegrationEnvironment(intenvdesc));
+        }
+      } catch (e) {
+        console.error('loadIntegrationEnvironment failed', e);
+        lib.runNext(this.reject.bind(this, e));
+        return ok.val;
       }
     }
     p = q.all(promises);
@@ -59,7 +74,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     resourceid = resourcename.resource || resourcename;
     console.log('will waitForResource', resourceid); 
     p = Resources.waitForResource(resourceid).then(resourceLoader);
-    p.then(this.doUpdateResource.bind(this, resourcename), null, this.fireLoadEvent.bind(this));
+    p.then(this.doUpdateResource.bind(this, resourcename), null, null);
     return p;
   };
 
@@ -120,8 +135,12 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
   };
   ElementLoaderJob.prototype.createLateElement = function (lateelemdesc) {
     var elem = this.destroyable.createElement(lateelemdesc), d = q.defer(), ret = d.promise;
-    elem.loadEvent.attachForSingleShot(elemLoaded.bind(null, d));
-    d = null;
+    if (lateelemdesc && lateelemdesc.options && lateelemdesc.options.actual) {
+      elem.loadEvent.attachForSingleShot(elemLoaded.bind(null, d));
+      d = null;
+      return ret;
+    }
+    d.resolve(elem);
     return ret;
   };
   function elemLoaded (defer, elem) {
@@ -133,13 +152,6 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     }
     this.destroyable.lateElementsCreated = true;
     this.resolve(firststageresult.concat(lateelemsresult));
-  };
-
-  ElementLoaderJob.prototype.fireLoadEvent = function () {
-    var pktp = this.peekToProceed();
-    if (!pktp.ok) {
-      return pktp.val;
-    }
   };
 
   function resourceLoader (resource) {

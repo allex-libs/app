@@ -3,7 +3,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
 
   var q = lib.q,
     qlib = lib.qlib;
-
+    
   function ElementUnloaderJob (el, defer) {
     JobOnDestroyable.call (this, el, defer);
   }
@@ -12,6 +12,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     if (this.destroyable) {
       this.destroyable.onUnloaded();
     }
+    JobOnDestroyable.prototype.destroy.call(this);
   };
   ElementUnloaderJob.prototype.go = function () {
     var ok = this.okToGo();
