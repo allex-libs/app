@@ -1,4 +1,4 @@
-function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
+function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
   'use strict';
 
   var q = lib.q,
@@ -8,12 +8,6 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     JobOnDestroyable.call (this, el, defer);
   }
   lib.inherit(ElementUnloaderJob, JobOnDestroyable);
-  ElementUnloaderJob.prototype.destroy = function () {
-    if (this.destroyable) {
-      this.destroyable.onUnloaded();
-    }
-    JobOnDestroyable.prototype.destroy.call(this);
-  };
   ElementUnloaderJob.prototype.go = function () {
     var ok = this.okToGo();
     if (!ok.ok) {
@@ -27,11 +21,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     if (lib.isArray(this.destroyable.resources)) {
       promises.concat(this.destroyable.resources.map(this.unloadResource.bind(this)));
     }
-    if (this.destroyable.integrationEnvironment) {
-      this.destroyable.integrationEnvironment.destroy();
-    }
-    this.destroyable.integrationEnvironment = null;
-    qlib.promise2defer(q.all(promises), this);
+    q.all(promises).then(
+      this.finalStep.bind(this),
+      this.reject.bind(this)
+    );
     return ok.val;
   };
 
@@ -51,6 +44,25 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     throw new Error('blah, sort this out');
   };
 
+  ElementUnloaderJob.prototype.finalStep = function (resultuptonow) {
+    if (!this.okToProceed()){
+      return;
+    }
+    if (this.destroyable) {
+      try {
+        if (this.destroyable.loadedEnvironmentAndElements.dynamic) {
+          this.destroyable.loadedEnvironmentAndElements.dynamic.destroy();
+          this.destroyable.loadedEnvironmentAndElements.dynamic = null;
+        }
+        this.destroyable.onUnloaded();
+      } catch (e) {
+        console.error('Unload finalizing produced an error', e);
+        this.reject(e)
+      }
+    }
+    this.resolve(resultuptonow);
+  };
+
   ElementUnloaderJob.prototype.fireLoadEvent = function () {
     if (!this.peekToProceed()) {
       return;
@@ -58,7 +70,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources) {
     this.destroyable.loadEvent.fire.apply(this.destroyable, arguments);
   };
 
-  return ElementUnloaderJob;
+  mylib.ElementUnloaderJob = ElementUnloaderJob;
 }
 
 module.exports = createElementUnloaderJob;

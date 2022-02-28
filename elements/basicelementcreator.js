@@ -45,8 +45,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
-    this.integrationEnvironment = null;
-    this.lateElementsCreated = null;
+    this.loadedEnvironmentAndElements = {
+      static: null,
+      dynamic: null
+    };
     this._addHook ('onInitialized');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
@@ -57,8 +59,17 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
-    this.lateElementsCreated = null;
-    this.integrationEnvironment = null;
+    if (this.loadedEnvironmentAndElements) {
+      if (this.loadedEnvironmentAndElements.dynamic) {
+        this.loadedEnvironmentAndElements.dynamic.destroy();
+      }
+      this.loadedEnvironmentAndElements.dynamic = null;
+      if (this.loadedEnvironmentAndElements.static) {
+        this.loadedEnvironmentAndElements.static.destroy();
+      }
+      this.loadedEnvironmentAndElements.static = null;
+    }
+    this.loadedEnvironmentAndElements = null;
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -104,13 +115,14 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     var subelements;
     preInitialize(this);
     this.actual = this.getConfigVal('actual') || false;
-    handleLoading(this, this.getConfigVal('actual'));
     subelements = this.getConfigVal('elements');
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
-    postInitialize(this);
-    this.fireInitializationDone();
+    (new jobs.LoadStaticEnvironmentAndElements(this)).go().then(
+      this.fireInitializationDone.bind(this),
+      this.destroy.bind(this)
+    );
   };
 
   function handleLoading (be, newactual) {
@@ -146,6 +158,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     this.attachHook('onActual', this.getConfigVal('onActual'));
     this.attachHook('onLoaded', this.getConfigVal('onLoaded'));
+    handleLoading(this, this.getConfigVal('actual'));
+    postInitialize(this);
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
@@ -366,10 +380,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     hook = null;
   };
 
-  BasicElement.prototype.createIntegrationEnvironmentDescriptor = function () {
+  BasicElement.prototype.staticEnvironmentDescriptor = function () {
     return null;
   };
-  BasicElement.prototype.lateElementDescriptors = function () {
+  BasicElement.prototype.staticElementDescriptors = function () {
+    return null;
+  };
+  BasicElement.prototype.actualEnvironmentDescriptor = function () {
+    return null;
+  };
+  BasicElement.prototype.actualElementDescriptors = function () {
     return null;
   };
 

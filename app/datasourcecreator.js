@@ -19,6 +19,7 @@ function createDataSource (lib, dataSuite) {
 
   lib.inherit (AppSideDataSource, CLDestroyable);
   AppSideDataSource.prototype.__cleanUp = function () {
+    this._unbindDS();
     this.busy = true;
     this.filter = null;
     if (this._esl) {
@@ -74,6 +75,7 @@ function createDataSource (lib, dataSuite) {
 
   AppSideDataSource.prototype.set_data = function (val) {
     if (this.data === val) return false;
+    if (!this.subSources) return false;
     this.data = val;
     this.subSources.traverse(valsetter.bind(null, val));
     val = null;
@@ -103,7 +105,7 @@ function createDataSource (lib, dataSuite) {
     if (!val) return true; //nothing to be done ...
 
     this._esl = this.environment.attachListener ('state', this._onEnvStateChanged.bind(this));
-    this._onEnvStateChanged(this.environment.state);
+    //this._onEnvStateChanged(this.environment.state);
     return true;
   };
 

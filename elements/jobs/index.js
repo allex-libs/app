@@ -3,11 +3,13 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
   var JobOnDestroyable = lib.qlib.JobOnDestroyable;
 
-  return {
-    ElementLoaderJob : require('./elementloadercreator')(lib, JobOnDestroyable, Resources, DescriptorHandler),
-    ElementUnloaderJob : require('./elementunloadercreator')(lib, JobOnDestroyable, Resources)
-  };
+  var ret = {};
 
+  require('./environmentandelementscreator')(lib, DescriptorHandler, ret);
+  require('./elementloadercreator')(lib, JobOnDestroyable, Resources, DescriptorHandler, ret);
+  require('./elementunloadercreator')(lib, JobOnDestroyable, Resources, ret);
+
+  return ret;
 }
 
 module.exports = createElementJobs;

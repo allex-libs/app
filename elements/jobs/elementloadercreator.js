@@ -1,4 +1,4 @@
-function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler) {
+function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler, mylib) {
   'use strict';
 
   var q = lib.q,
@@ -23,8 +23,10 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     JobOnDestroyable.prototype.resolve.call(this, thingy);
   };
   ElementLoaderJob.prototype.reject = function (reason) {
-    console.error('Element loading failed for', this.destroyable.id, this.destroyable.constructor.name);
-    console.error(reason);
+    if (this.destroyable.id) {
+      console.error('Element loading failed for', this.destroyable.id, this.destroyable.constructor.name);
+      console.error(reason);
+    }
     JobOnDestroyable.prototype.reject.call(this, reason);
   };
   ElementLoaderJob.prototype.go = function () {
@@ -45,9 +47,20 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     if (lib.isArray(resdescs)) {
       promises.push.apply(promises, resdescs.map(this.loadResourceParams.bind(this)));
     }
+    if (this.destroyable.createIntegrationEnvironmentDescriptor) {
+      console.error(this.destroyable.constructor.name, 'has to move createIntegrationEnvironmentDescriptor to actualEnvironmentDescriptor')
+      lib.runNext(this.reject.bind(this, new lib.Error('IMPLEMENTATION_OBSOLETE', 'createIntegrationEnvironmentDescriptor is obsolete')));
+      return;
+    }
+    if (this.destroyable.lateElementDescriptors) {
+      console.error(this.destroyable.constructor.name, 'has to move lateElementDescriptors to actualElementDescriptors')
+      lib.runNext(this.reject.bind(this, new lib.Error('IMPLEMENTATION_OBSOLETE', 'lateElementDescriptors is obsolete')));
+      return;
+    }
+    /*
     if (!this.destroyable.integrationEnvironment) {
       try {
-        intenvdesc = this.destroyable.createIntegrationEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
+        intenvdesc = this.destroyable.actualEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
         if (intenvdesc) {
           promises.push(this.loadIntegrationEnvironment(intenvdesc));
         }
@@ -57,12 +70,19 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
         return ok.val;
       }
     }
+    */
     p = q.all(promises);
     //qlib.promise2defer(p, this);
+    /*
     p.then(
       this.createLateElements.bind(this),
       this.reject.bind(this)
     );
+    */
+    p.then(
+      this.loadDynamicEnvironmentAndElements.bind(this),
+      this.reject.bind(this)
+    )
     return ok.val;
   };
 
@@ -122,7 +142,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
       return;
     }
     if (!this.destroyable.lateElementsCreated) {
-      lateelemdescs = this.destroyable.lateElementDescriptors();
+      lateelemdescs = this.destroyable.actualElementDescriptors();
       if (lib.isArray(lateelemdescs)) {
         q.all(lateelemdescs.map(this.createLateElement.bind(this))).then(
           this.onLateElementsCreated.bind(this, resultuptonow),
@@ -154,12 +174,22 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     this.resolve(firststageresult.concat(lateelemsresult));
   };
 
+  ElementLoaderJob.prototype.loadDynamicEnvironmentAndElements = function (resultuptonow) {
+    if (!this.okToProceed()) {
+      return;
+    }
+    (new mylib.LoadActualEnvironmentAndElements(this.destroyable)).go().then(
+      this.resolve.bind(this, resultuptonow),
+      this.reject.bind(this)
+    );
+  };
+
   function resourceLoader (resource) {
     console.log('got resource', resource, 'will load it');
     return resource.load().then(qlib.returner(resource));
   }
 
-  return ElementLoaderJob;
+  mylib.ElementLoaderJob = ElementLoaderJob;
 }
 
 module.exports = createElementLoaderJob;
