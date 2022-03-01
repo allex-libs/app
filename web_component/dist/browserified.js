@@ -3045,7 +3045,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    * @alias LinksAndLogicDestroyableMixin~destroyLogic
    */
   function destroyLogic (logic) {
-    console.log('should destroy logic', logic);
+    //console.log('should destroy logic', logic);
     var first, second;
     if (!lib.isArray(logic)) {
       console.error('what is logic?', logic);
