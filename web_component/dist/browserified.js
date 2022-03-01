@@ -3016,12 +3016,12 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
    */
   LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLinks = function (links) {
     if (lib.isArray(links)) {
-      links.forEach(destroyLink);
+      links.forEach(destroyLinkOrLogic.bind(null, 'link'));
     }
   };
   LinksAndLogicDestroyableMixin.prototype.destroyArrayOfLogic = function (logics) {
     if (lib.isArray(logics)) {
-      logics.forEach(destroyLogic);
+      logics.forEach(destroyLinkOrLogic.bind(null, 'logic'));
     }
   };
 
@@ -3035,66 +3035,34 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     );
   };
 
-
-  function destroyLink (link) {
-    //console.log('should destroy link', link);
+  function destroyLinkOrLogic (name, thingy) {
+    //console.log('should destroy', name, thingy);
     var first, second;
-    if (!lib.isArray(link)) {
-      console.error('what is link?', link);
+    if (!lib.isArray(thingy)) {
+      console.error('what is', name, '?', thingy);
       return;
     }
-    if (link.length == 1) {
-      destroyLogic(link[0]);
+    if (thingy.length == 1) {
+      destroyLinkOrLogic(name, thingy[0]);
       return;
     }
-    if (link.length!=2) {
-      console.error('what is link?', link);
+    if (thingy.length!=2) {
+      console.error('what is', name, '?', thingy);
       return;
     }
-    first = link[0];
-    second = link[1];
+    first = thingy[0];
+    second = thingy[1];
     if (first.instance) {
-      first.instance.destroy();
+      //first.instance.destroy();
       first.instance = null;
     } else {
-      console.error('what is first?', first);
+      console.error('what is first in', name, '?', first);
     }
     if (lib.isArray(second)) {
       lib.arryDestroyAll(second.splice(0));
     }
   }
 
-  /** 
-   * @function
-   * @alias LinksAndLogicDestroyableMixin~destroyLogic
-   */
-  function destroyLogic (logic) {
-    //console.log('should destroy logic', logic);
-    var first, second;
-    if (!lib.isArray(logic)) {
-      console.error('what is logic?', logic);
-      return;
-    }
-    if (logic.length == 1) {
-      destroyLogic(logic[0]);
-      return;
-    }
-    if (logic.length!=2) {
-      console.error('what is logic?', logic);
-      return;
-    }
-    first = logic[0];
-    second = logic[1];
-    if (first.instance) {
-      first.instance.destroy();
-      first.instance = null;
-    } else {
-      console.error('what is first?', first);
-    }
-    if (lib.isArray(second)) {
-      lib.arryDestroyAll(second.splice(0));
-    }
-  }
   mylib.LinksAndLogicDestroyableMixin = LinksAndLogicDestroyableMixin;
 }
 
