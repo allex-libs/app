@@ -108,6 +108,20 @@ function createElementsAndEnvironmentFunctionality (lib, DescriptorHandler, myli
     defer.resolve(elem);
   }
 
+  function LoadInitialElementsAndEnvironmentJobCore (elem) {
+    LoadElementsAndEnvironmentJobCore.call(this, elem);
+  }
+  lib.inherit(LoadInitialElementsAndEnvironmentJobCore, LoadElementsAndEnvironmentJobCore);
+  LoadInitialElementsAndEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'initialEnvironmentDescriptor';
+  LoadInitialElementsAndEnvironmentJobCore.prototype.elementDescriptorsMethodName = 'initialElementDescriptors';
+  LoadInitialElementsAndEnvironmentJobCore.prototype.loadedElementsAndEnvironmentPropertyName = 'initial';
+  
+  function LoadInitialElementsAndEnvironmentJob (elem, defer) {
+    SteppedJobOnSteppedInstance.call(this, new LoadInitialElementsAndEnvironmentJobCore(elem), defer);
+  }
+  lib.inherit(LoadInitialElementsAndEnvironmentJob, SteppedJobOnSteppedInstance);
+  mylib.LoadInitialElementsAndEnvironment = LoadInitialElementsAndEnvironmentJob;
+
   function LoadStaticElementsAndEnvironmentJobCore (elem) {
     LoadElementsAndEnvironmentJobCore.call(this, elem);
   }

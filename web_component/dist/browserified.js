@@ -1462,6 +1462,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
     this.loadedElementsAndEnvironment = {
+      initial: null,
       static: null,
       dynamic: null
     };
@@ -1484,6 +1485,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
         this.loadedElementsAndEnvironment.static.destroy();
       }
       this.loadedElementsAndEnvironment.static = null;
+      if (this.loadedElementsAndEnvironment.initial) {
+        this.loadedElementsAndEnvironment.initial.destroy();
+      }
+      this.loadedElementsAndEnvironment.initial = null;
     }
     this.loadedElementsAndEnvironment = null;
     if (this._listeners) {
@@ -1535,9 +1540,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
-    (new jobs.LoadStaticElementsAndEnvironment(this)).go().then(
-      this.fireInitializationDone.bind(this),
-      this.destroy.bind(this)
+    (new jobs.LoadInitialElementsAndEnvironment(this)).go().then(
+      (new jobs.LoadStaticElementsAndEnvironment(this)).go().then(
+        this.fireInitializationDone.bind(this),
+        this.destroy.bind(this)
+      )
     );
   };
 
@@ -1796,6 +1803,12 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     hook = null;
   };
 
+  BasicElement.prototype.initialEnvironmentDescriptor = function () {
+    return null;
+  };
+  BasicElement.prototype.initialElementDescriptors = function () {
+    return null;
+  };
   BasicElement.prototype.staticEnvironmentDescriptor = function () {
     return null;
   };
@@ -2251,6 +2264,20 @@ function createElementsAndEnvironmentFunctionality (lib, DescriptorHandler, myli
   function elemLoaded (defer, elem) {
     defer.resolve(elem);
   }
+
+  function LoadInitialElementsAndEnvironmentJobCore (elem) {
+    LoadElementsAndEnvironmentJobCore.call(this, elem);
+  }
+  lib.inherit(LoadInitialElementsAndEnvironmentJobCore, LoadElementsAndEnvironmentJobCore);
+  LoadInitialElementsAndEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'initialEnvironmentDescriptor';
+  LoadInitialElementsAndEnvironmentJobCore.prototype.elementDescriptorsMethodName = 'initialElementDescriptors';
+  LoadInitialElementsAndEnvironmentJobCore.prototype.loadedElementsAndEnvironmentPropertyName = 'initial';
+  
+  function LoadInitialElementsAndEnvironmentJob (elem, defer) {
+    SteppedJobOnSteppedInstance.call(this, new LoadInitialElementsAndEnvironmentJobCore(elem), defer);
+  }
+  lib.inherit(LoadInitialElementsAndEnvironmentJob, SteppedJobOnSteppedInstance);
+  mylib.LoadInitialElementsAndEnvironment = LoadInitialElementsAndEnvironmentJob;
 
   function LoadStaticElementsAndEnvironmentJobCore (elem) {
     LoadElementsAndEnvironmentJobCore.call(this, elem);
