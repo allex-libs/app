@@ -3037,7 +3037,31 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
 
 
   function destroyLink (link) {
-    console.log('should destroy link', link);
+    //console.log('should destroy link', link);
+    var first, second;
+    if (!lib.isArray(link)) {
+      console.error('what is link?', link);
+      return;
+    }
+    if (link.length == 1) {
+      destroyLogic(link[0]);
+      return;
+    }
+    if (link.length!=2) {
+      console.error('what is link?', link);
+      return;
+    }
+    first = link[0];
+    second = link[1];
+    if (first.instance) {
+      first.instance.destroy();
+      first.instance = null;
+    } else {
+      console.error('what is first?', first);
+    }
+    if (lib.isArray(second)) {
+      lib.arryDestroyAll(second.splice(0));
+    }
   }
 
   /** 
