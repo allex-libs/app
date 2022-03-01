@@ -45,7 +45,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
-    this.loadedEnvironmentAndElements = {
+    this.loadedElementsAndEnvironment = {
       static: null,
       dynamic: null
     };
@@ -59,17 +59,17 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
-    if (this.loadedEnvironmentAndElements) {
-      if (this.loadedEnvironmentAndElements.dynamic) {
-        this.loadedEnvironmentAndElements.dynamic.destroy();
+    if (this.loadedElementsAndEnvironment) {
+      if (this.loadedElementsAndEnvironment.dynamic) {
+        this.loadedElementsAndEnvironment.dynamic.destroy();
       }
-      this.loadedEnvironmentAndElements.dynamic = null;
-      if (this.loadedEnvironmentAndElements.static) {
-        this.loadedEnvironmentAndElements.static.destroy();
+      this.loadedElementsAndEnvironment.dynamic = null;
+      if (this.loadedElementsAndEnvironment.static) {
+        this.loadedElementsAndEnvironment.static.destroy();
       }
-      this.loadedEnvironmentAndElements.static = null;
+      this.loadedElementsAndEnvironment.static = null;
     }
-    this.loadedEnvironmentAndElements = null;
+    this.loadedElementsAndEnvironment = null;
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -119,7 +119,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
-    (new jobs.LoadStaticEnvironmentAndElements(this)).go().then(
+    (new jobs.LoadStaticElementsAndEnvironment(this)).go().then(
       this.fireInitializationDone.bind(this),
       this.destroy.bind(this)
     );

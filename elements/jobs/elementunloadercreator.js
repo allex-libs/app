@@ -50,9 +50,9 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
     }
     if (this.destroyable) {
       try {
-        if (this.destroyable.loadedEnvironmentAndElements.dynamic) {
-          this.destroyable.loadedEnvironmentAndElements.dynamic.destroy();
-          this.destroyable.loadedEnvironmentAndElements.dynamic = null;
+        if (this.destroyable.loadedElementsAndEnvironment.dynamic) {
+          this.destroyable.loadedElementsAndEnvironment.dynamic.destroy();
+          this.destroyable.loadedElementsAndEnvironment.dynamic = null;
         }
         this.destroyable.onUnloaded();
       } catch (e) {
