@@ -6,6 +6,7 @@ function createMixins (lib) {
   require('./neededconfigurationnamescreator')(lib, ret);
 
   require('./childactualizercreator')(lib, ret);
+  require('./childrenstackcreator')(lib, ret);
   require('./formcreator')(lib, ret);
   return ret;
 }

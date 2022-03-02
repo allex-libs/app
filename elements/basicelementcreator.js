@@ -45,7 +45,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
-    this.loadedElementsAndEnvironment = {
+    this.loadedEnvironment = {
       initial: null,
       static: null,
       dynamic: null
@@ -60,21 +60,21 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
-    if (this.loadedElementsAndEnvironment) {
-      if (this.loadedElementsAndEnvironment.dynamic) {
-        this.loadedElementsAndEnvironment.dynamic.destroy();
+    if (this.loadedEnvironment) {
+      if (this.loadedEnvironment.dynamic) {
+        this.loadedEnvironment.dynamic.destroy();
       }
-      this.loadedElementsAndEnvironment.dynamic = null;
-      if (this.loadedElementsAndEnvironment.static) {
-        this.loadedElementsAndEnvironment.static.destroy();
+      this.loadedEnvironment.dynamic = null;
+      if (this.loadedEnvironment.static) {
+        this.loadedEnvironment.static.destroy();
       }
-      this.loadedElementsAndEnvironment.static = null;
-      if (this.loadedElementsAndEnvironment.initial) {
-        this.loadedElementsAndEnvironment.initial.destroy();
+      this.loadedEnvironment.static = null;
+      if (this.loadedEnvironment.initial) {
+        this.loadedEnvironment.initial.destroy();
       }
-      this.loadedElementsAndEnvironment.initial = null;
+      this.loadedEnvironment.initial = null;
     }
-    this.loadedElementsAndEnvironment = null;
+    this.loadedEnvironment = null;
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -124,8 +124,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
-    (new jobs.LoadInitialElementsAndEnvironment(this)).go().then(
-      (new jobs.LoadStaticElementsAndEnvironment(this)).go().then(
+    (new jobs.LoadInitialEnvironment(this)).go().then(
+      (new jobs.LoadStaticEnvironment(this)).go().then(
         this.fireInitializationDone.bind(this),
         this.destroy.bind(this)
       )

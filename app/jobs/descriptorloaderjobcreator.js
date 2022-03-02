@@ -100,8 +100,38 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
     this.onAllDone();
   };
+  function parentAndFinalNameForElementDescriptor (app, desc) {
+    var namearry, parent, possiblename;
+    if (!desc) {
+      return null;
+    }
+    if (!desc.name) {
+      return null;
+    }
+    namearry = desc.name.split('.');
+    if (namearry.length>1) {
+      possiblename = namearry.pop();
+      try {
+        return {parent: app.getElement('element.'+namearry.join('.')), name: possiblename};
+      }
+      catch (e) {
+        return {parent: null, name: desc.name};
+      }
+    }
+    return {parent: null, name: desc.name};
+  }
   DescriptorLoaderJob.prototype.createElement = function (desc) {
+    var parentandfinalname, makeupdesc;
     if (!this.okToProceed()) {
+      return;
+    }
+    parentandfinalname = parentAndFinalNameForElementDescriptor(this.destroyable, desc);
+    if (!parentandfinalname) {
+      throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(desc)+' is not a valid element descriptor');
+    }
+    if (parentandfinalname.parent) {
+      makeupdesc = lib.extend(lib.pickExcept(desc, ['name']), {name: parentandfinalname.name});
+      parentandfinalname.parent.createElement(makeupdesc);
       return;
     }
     BasicElement.createElement (desc, this.addElement.bind(this));

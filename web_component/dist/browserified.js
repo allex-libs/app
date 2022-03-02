@@ -675,8 +675,38 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
   DescriptorLoaderJob.prototype.onElementsLoaded = function () {
     this.onAllDone();
   };
+  function parentAndFinalNameForElementDescriptor (app, desc) {
+    var namearry, parent, possiblename;
+    if (!desc) {
+      return null;
+    }
+    if (!desc.name) {
+      return null;
+    }
+    namearry = desc.name.split('.');
+    if (namearry.length>1) {
+      possiblename = namearry.pop();
+      try {
+        return {parent: app.getElement('element.'+namearry.join('.')), name: possiblename};
+      }
+      catch (e) {
+        return {parent: null, name: desc.name};
+      }
+    }
+    return {parent: null, name: desc.name};
+  }
   DescriptorLoaderJob.prototype.createElement = function (desc) {
+    var parentandfinalname, makeupdesc;
     if (!this.okToProceed()) {
+      return;
+    }
+    parentandfinalname = parentAndFinalNameForElementDescriptor(this.destroyable, desc);
+    if (!parentandfinalname) {
+      throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(desc)+' is not a valid element descriptor');
+    }
+    if (parentandfinalname.parent) {
+      makeupdesc = lib.extend(lib.pickExcept(desc, ['name']), {name: parentandfinalname.name});
+      parentandfinalname.parent.createElement(makeupdesc);
       return;
     }
     BasicElement.createElement (desc, this.addElement.bind(this));
@@ -1330,7 +1360,7 @@ function createDescriptorApi (lib) {
 module.exports = createDescriptorApi;
     
 
-},{"allex_arrayoperationslowlevellib":32}],17:[function(require,module,exports){
+},{"allex_arrayoperationslowlevellib":33}],17:[function(require,module,exports){
 function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
   var q = lib.q,
@@ -1461,7 +1491,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.initialized = false;
     this._hooks = new lib.Map();
     this._listeners = new lib.Map();
-    this.loadedElementsAndEnvironment = {
+    this.loadedEnvironment = {
       initial: null,
       static: null,
       dynamic: null
@@ -1476,21 +1506,21 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
-    if (this.loadedElementsAndEnvironment) {
-      if (this.loadedElementsAndEnvironment.dynamic) {
-        this.loadedElementsAndEnvironment.dynamic.destroy();
+    if (this.loadedEnvironment) {
+      if (this.loadedEnvironment.dynamic) {
+        this.loadedEnvironment.dynamic.destroy();
       }
-      this.loadedElementsAndEnvironment.dynamic = null;
-      if (this.loadedElementsAndEnvironment.static) {
-        this.loadedElementsAndEnvironment.static.destroy();
+      this.loadedEnvironment.dynamic = null;
+      if (this.loadedEnvironment.static) {
+        this.loadedEnvironment.static.destroy();
       }
-      this.loadedElementsAndEnvironment.static = null;
-      if (this.loadedElementsAndEnvironment.initial) {
-        this.loadedElementsAndEnvironment.initial.destroy();
+      this.loadedEnvironment.static = null;
+      if (this.loadedEnvironment.initial) {
+        this.loadedEnvironment.initial.destroy();
       }
-      this.loadedElementsAndEnvironment.initial = null;
+      this.loadedEnvironment.initial = null;
     }
-    this.loadedElementsAndEnvironment = null;
+    this.loadedEnvironment = null;
     if (this._listeners) {
       this._listeners.traverse (lib.arryDestroyAll);
     }
@@ -1540,8 +1570,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
-    (new jobs.LoadInitialElementsAndEnvironment(this)).go().then(
-      (new jobs.LoadStaticElementsAndEnvironment(this)).go().then(
+    (new jobs.LoadInitialEnvironment(this)).go().then(
+      (new jobs.LoadStaticEnvironment(this)).go().then(
         this.fireInitializationDone.bind(this),
         this.destroy.bind(this)
       )
@@ -1962,7 +1992,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     );
     */
     p.then(
-      this.loadDynamicElementsAndEnvironment.bind(this),
+      this.loadDynamicEnvironment.bind(this),
       this.reject.bind(this)
     )
     return ok.val;
@@ -2056,11 +2086,11 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     this.resolve(firststageresult.concat(lateelemsresult));
   };
 
-  ElementLoaderJob.prototype.loadDynamicElementsAndEnvironment = function (resultuptonow) {
+  ElementLoaderJob.prototype.loadDynamicEnvironment = function (resultuptonow) {
     if (!this.okToProceed()) {
       return;
     }
-    (new mylib.LoadActualElementsAndEnvironment(this.destroyable)).go().then(
+    (new mylib.LoadActualEnvironment(this.destroyable)).go().then(
       this.resolve.bind(this, resultuptonow),
       this.reject.bind(this)
     );
@@ -2129,9 +2159,9 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
     }
     if (this.destroyable) {
       try {
-        if (this.destroyable.loadedElementsAndEnvironment.dynamic) {
-          this.destroyable.loadedElementsAndEnvironment.dynamic.destroy();
-          this.destroyable.loadedElementsAndEnvironment.dynamic = null;
+        if (this.destroyable.loadedEnvironment.dynamic) {
+          this.destroyable.loadedEnvironment.dynamic.destroy();
+          this.destroyable.loadedEnvironment.dynamic = null;
         }
         this.destroyable.onUnloaded();
       } catch (e) {
@@ -2155,47 +2185,30 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
 module.exports = createElementUnloaderJob;
 
 },{}],22:[function(require,module,exports){
-function createElementsAndEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
+function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
     SteppedJobOnSteppedInstance = qlib.SteppedJobOnSteppedInstance;
 
-  function ElementsAndEnvironment () {
-    this.elements = [];
-    this.envLoader = null;
-  }
-  ElementsAndEnvironment.prototype.destroy = function () {
-    if (lib.isArray(this.elements)) {
-      lib.arryDestroyAll(this.elements);
-    }
-    this.elements = null;
-    if (this.envLoader) {
-      this.envLoader.destroy();
-    }
-    this.envLoader = null;
-  };
-
-  function LoadElementsAndEnvironmentJobCore (elem) {
+  function LoadEnvironmentJobCore (elem) {
     this.elem = elem;
-    this.elemsAndEnvironment = new ElementsAndEnvironment();
+    this.envLoader = null;
     this.envDesc = null;
-    this.elemDescs = null;
   }
-  LoadElementsAndEnvironmentJobCore.prototype.destroy = function () {
-    this.elemDescs = null;
+  LoadEnvironmentJobCore.prototype.destroy = function () {
     this.envDesc = null;
-    this.elemsAndEnvironment = null;
+    this.envLoader = null;
     this.elem = null;
   };
-  LoadElementsAndEnvironmentJobCore.prototype.shouldContinue = function () {
+  LoadEnvironmentJobCore.prototype.shouldContinue = function () {
     if (this.elem && this.elem.destroyed) {
       return;
     }
     return new lib.Error('ELEMENT_DESTROYED', 'No Element to load Environment and Elements on');
   }
-  LoadElementsAndEnvironmentJobCore.prototype.init = function () {
+  LoadEnvironmentJobCore.prototype.init = function () {
     if (this.elem.createIntegrationEnvironmentDescriptor) {
       console.error(this.elem.constructor.name, 'has to move createIntegrationEnvironmentDescriptor to actualEnvironmentDescriptor')
       return new lib.Error('IMPLEMENTATION_OBSOLETE', 'createIntegrationEnvironmentDescriptor is obsolete');
@@ -2205,53 +2218,34 @@ function createElementsAndEnvironmentFunctionality (lib, DescriptorHandler, myli
       return new lib.Error('IMPLEMENTATION_OBSOLETE', 'lateElementDescriptors is obsolete');
     }
   };
-  LoadElementsAndEnvironmentJobCore.prototype.getElementDescriptors = function () {
-    return this.elem[this.elementDescriptorsMethodName]();
-  };
-  LoadElementsAndEnvironmentJobCore.prototype.onElementDescriptors = function (elemdescs) {
-    this.elemDescs = elemdescs;
-  };
-  LoadElementsAndEnvironmentJobCore.prototype.createElements = function () {
-    if (!lib.isArray(this.elemDescs)) {
-      return [];
-    }
-    return q.all(this.elemDescs.map(this.createOneElement.bind(this)));
-  };
-  LoadElementsAndEnvironmentJobCore.prototype.onElements = function (elems) {
-    this.elemsAndEnvironment.elements = elems;
-  };
-  LoadElementsAndEnvironmentJobCore.prototype.getEnvironmentDescriptor = function () {
+  LoadEnvironmentJobCore.prototype.getEnvironmentDescriptor = function () {
     return this.elem[this.environmentDescriptorMethodName](this.elem.myNameOnMasterEnvironment());
   };
-  LoadElementsAndEnvironmentJobCore.prototype.onEnvironmentDescriptor = function (envdesc) {
+  LoadEnvironmentJobCore.prototype.onEnvironmentDescriptor = function (envdesc) {
     this.envDesc = envdesc ? new DescriptorHandler(envdesc) : null;
   };
-  LoadElementsAndEnvironmentJobCore.prototype.createEnvironment = function () {
+  LoadEnvironmentJobCore.prototype.createEnvironment = function () {
     if (!this.envDesc) {
       return null;
     }
     return this.envDesc.load();
   };
-  LoadElementsAndEnvironmentJobCore.prototype.onEnvironment = function (env) {
-    this.elemsAndEnvironment.envLoader = env;
+  LoadEnvironmentJobCore.prototype.onEnvironment = function (env) {
+    this.envLoader = env;
   };
-  LoadElementsAndEnvironmentJobCore.prototype.finalize = function () {
-    this.elem.loadedElementsAndEnvironment[this.loadedElementsAndEnvironmentPropertyName] = this.elemsAndEnvironment;
+  LoadEnvironmentJobCore.prototype.finalize = function () {
+    this.elem.loadedEnvironment[this.loadedEnvironmentPropertyName] = this.envLoader;
   };
 
-  LoadElementsAndEnvironmentJobCore.prototype.steps = [
+  LoadEnvironmentJobCore.prototype.steps = [
     'init',
-    'getElementDescriptors',
-    'onElementDescriptors',
-    'createElements',
-    'onElements',
     'getEnvironmentDescriptor',
     'onEnvironmentDescriptor',
     'createEnvironment',
     'onEnvironment',
     'finalize'
   ];
-  LoadElementsAndEnvironmentJobCore.prototype.createOneElement = function (elemdesc) {
+  LoadEnvironmentJobCore.prototype.createOneElement = function (elemdesc) {
     var elem = this.elem.createElement(elemdesc), d = q.defer(), ret = d.promise;
     if (elemdesc && elemdesc.options && elemdesc.options.actual) {
       elem.loadEvent.attachForSingleShot(elemLoaded.bind(null, d));
@@ -2265,49 +2259,46 @@ function createElementsAndEnvironmentFunctionality (lib, DescriptorHandler, myli
     defer.resolve(elem);
   }
 
-  function LoadInitialElementsAndEnvironmentJobCore (elem) {
-    LoadElementsAndEnvironmentJobCore.call(this, elem);
+  function LoadInitialEnvironmentJobCore (elem) {
+    LoadEnvironmentJobCore.call(this, elem);
   }
-  lib.inherit(LoadInitialElementsAndEnvironmentJobCore, LoadElementsAndEnvironmentJobCore);
-  LoadInitialElementsAndEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'initialEnvironmentDescriptor';
-  LoadInitialElementsAndEnvironmentJobCore.prototype.elementDescriptorsMethodName = 'initialElementDescriptors';
-  LoadInitialElementsAndEnvironmentJobCore.prototype.loadedElementsAndEnvironmentPropertyName = 'initial';
+  lib.inherit(LoadInitialEnvironmentJobCore, LoadEnvironmentJobCore);
+  LoadInitialEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'initialEnvironmentDescriptor';
+  LoadInitialEnvironmentJobCore.prototype.loadedEnvironmentPropertyName = 'initial';
   
-  function LoadInitialElementsAndEnvironmentJob (elem, defer) {
-    SteppedJobOnSteppedInstance.call(this, new LoadInitialElementsAndEnvironmentJobCore(elem), defer);
+  function LoadInitialEnvironmentJob (elem, defer) {
+    SteppedJobOnSteppedInstance.call(this, new LoadInitialEnvironmentJobCore(elem), defer);
   }
-  lib.inherit(LoadInitialElementsAndEnvironmentJob, SteppedJobOnSteppedInstance);
-  mylib.LoadInitialElementsAndEnvironment = LoadInitialElementsAndEnvironmentJob;
+  lib.inherit(LoadInitialEnvironmentJob, SteppedJobOnSteppedInstance);
+  mylib.LoadInitialEnvironment = LoadInitialEnvironmentJob;
 
-  function LoadStaticElementsAndEnvironmentJobCore (elem) {
-    LoadElementsAndEnvironmentJobCore.call(this, elem);
+  function LoadStaticEnvironmentJobCore (elem) {
+    LoadEnvironmentJobCore.call(this, elem);
   }
-  lib.inherit(LoadStaticElementsAndEnvironmentJobCore, LoadElementsAndEnvironmentJobCore);
-  LoadStaticElementsAndEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'staticEnvironmentDescriptor';
-  LoadStaticElementsAndEnvironmentJobCore.prototype.elementDescriptorsMethodName = 'staticElementDescriptors';
-  LoadStaticElementsAndEnvironmentJobCore.prototype.loadedElementsAndEnvironmentPropertyName = 'static';
+  lib.inherit(LoadStaticEnvironmentJobCore, LoadEnvironmentJobCore);
+  LoadStaticEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'staticEnvironmentDescriptor';
+  LoadStaticEnvironmentJobCore.prototype.loadedEnvironmentPropertyName = 'static';
   
-  function LoadStaticElementsAndEnvironmentJob (elem, defer) {
-    SteppedJobOnSteppedInstance.call(this, new LoadStaticElementsAndEnvironmentJobCore(elem), defer);
+  function LoadStaticEnvironmentJob (elem, defer) {
+    SteppedJobOnSteppedInstance.call(this, new LoadStaticEnvironmentJobCore(elem), defer);
   }
-  lib.inherit(LoadStaticElementsAndEnvironmentJob, SteppedJobOnSteppedInstance);
-  mylib.LoadStaticElementsAndEnvironment = LoadStaticElementsAndEnvironmentJob;
+  lib.inherit(LoadStaticEnvironmentJob, SteppedJobOnSteppedInstance);
+  mylib.LoadStaticEnvironment = LoadStaticEnvironmentJob;
 
-  function LoadActualElementsAndEnvironmentJobCore (elem) {
-    LoadElementsAndEnvironmentJobCore.call(this, elem);
+  function LoadActualEnvironmentJobCore (elem) {
+    LoadEnvironmentJobCore.call(this, elem);
   }
-  lib.inherit(LoadActualElementsAndEnvironmentJobCore, LoadElementsAndEnvironmentJobCore);
-  LoadActualElementsAndEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'actualEnvironmentDescriptor';
-  LoadActualElementsAndEnvironmentJobCore.prototype.elementDescriptorsMethodName = 'actualElementDescriptors';
-  LoadActualElementsAndEnvironmentJobCore.prototype.loadedElementsAndEnvironmentPropertyName = 'dynamic';
+  lib.inherit(LoadActualEnvironmentJobCore, LoadEnvironmentJobCore);
+  LoadActualEnvironmentJobCore.prototype.environmentDescriptorMethodName = 'actualEnvironmentDescriptor';
+  LoadActualEnvironmentJobCore.prototype.loadedEnvironmentPropertyName = 'dynamic';
 
-  function LoadActualElementsAndEnvironmentJob (elem, defer) {
-    SteppedJobOnSteppedInstance.call(this, new LoadActualElementsAndEnvironmentJobCore(elem), defer);
+  function LoadActualEnvironmentJob (elem, defer) {
+    SteppedJobOnSteppedInstance.call(this, new LoadActualEnvironmentJobCore(elem), defer);
   }
-  lib.inherit(LoadActualElementsAndEnvironmentJob, SteppedJobOnSteppedInstance);
-  mylib.LoadActualElementsAndEnvironment = LoadActualElementsAndEnvironmentJob;
+  lib.inherit(LoadActualEnvironmentJob, SteppedJobOnSteppedInstance);
+  mylib.LoadActualEnvironment = LoadActualEnvironmentJob;
 }
-module.exports = createElementsAndEnvironmentFunctionality;
+module.exports = createEnvironmentFunctionality;
 },{}],23:[function(require,module,exports){
 function createElementJobs (lib, Resources, DescriptorHandler) {
   'use strict';
@@ -2316,7 +2307,7 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
   var ret = {};
 
-  require('./environmentandelementscreator')(lib, DescriptorHandler, ret);
+  require('./environmentloadingcreator')(lib, DescriptorHandler, ret);
   require('./elementloadercreator')(lib, JobOnDestroyable, Resources, DescriptorHandler, ret);
   require('./elementunloadercreator')(lib, JobOnDestroyable, Resources, ret);
 
@@ -2325,7 +2316,7 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
 module.exports = createElementJobs;
 
-},{"./elementloadercreator":20,"./elementunloadercreator":21,"./environmentandelementscreator":22}],24:[function(require,module,exports){
+},{"./elementloadercreator":20,"./elementunloadercreator":21,"./environmentloadingcreator":22}],24:[function(require,module,exports){
 function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib) {
   /**
    * Library that allows one to create an Application
@@ -2536,7 +2527,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
 
 module.exports = libCreator;
 
-},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":25,"./mixins":28,"./modifiers":31,"./preprocessingregistry":34,"./preprocessors":41,"./resources":42}],25:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":25,"./mixins":29,"./modifiers":32,"./preprocessingregistry":35,"./preprocessors":42,"./resources":43}],25:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -2768,6 +2759,178 @@ function createChildActualizerMixin (lib, mylib) {
 module.exports = createChildActualizerMixin;
 
 },{}],27:[function(require,module,exports){
+function createChildrenStackMixin (lib, mylib) {
+  'use strict';
+
+  function ChildrenStackElement (actualchangecb, options, index) {
+    this.actualChangeCb = actualchangecb;
+    this.name = options.name;
+    this.title = options.title;
+    this.index = index;
+    this.elem = null;
+    this.elementDestroyedListener = null;
+    this.elementActualChangedListener = null;
+  }
+  ChildrenStackElement.prototype.destroy = function () {
+    this.purgeListeners();
+    this.elem = null;
+    this.index = null;
+    this.title = null;
+    this.name = null;
+    this.actualChangeCb = null;
+  };
+  ChildrenStackElement.prototype.attachTo = function (elem) {
+    if (this.elementDestroyedListener) {
+      throw new lib.Error('ALREADY_LISTENING_TO_ACTUAL_CHANGE', 'There is already an elementDestroyedListener');
+    }
+    if (this.elementActualChangedListener) {
+      throw new lib.Error('ALREADY_LISTENING_TO_ACTUAL_CHANGE', 'There is already an elementActualChangedListener');
+    }
+    this.elem = elem;
+    this.elementDestroyedListener = elem.destroyed.attach(this.onElementDestroyed.bind(this));
+    this.elementActualChangedListener = elem.attachListener('changed', 'actual', this.onElementActualChanged.bind(this));
+  };
+  ChildrenStackElement.prototype.onElementDestroyed = function () {
+    this.purgeListeners();
+  };
+  ChildrenStackElement.prototype.onElementActualChanged = function (act) {
+    if (lib.isFunction(this.actualChangeCb)) {
+      this.actualChangeCb(this, act);
+    }
+  };
+  ChildrenStackElement.prototype.purgeListeners = function () {
+    if (this.elementActualChangedListener) {
+      this.elementActualChangedListener.destroy();
+    }
+    this.elementActualChangedListener = null;
+    if (this.elementDestroyedListener) {
+      this.elementDestroyedListener.destroy();
+    }
+    this.elementDestroyedListener = null;
+  };
+
+  function checkChildOption (childoption) {
+    if (!childoption) {
+      throw new lib.Error('NO_CHILD_IN_CHILDRENSTACK_CHILDREN', 'There must be a child option in childrenstack.children');
+    }
+    if (!(lib.isString(childoption.name) && childoption.name)) {
+      throw new lib.Error('NO_NAME_IN_CHILDRENSTACK_CHILDREN_CHILD', 'Child option in childrenstack.children must have a name (String)');
+    }
+    if (!(lib.isString(childoption.title) && childoption.title)) {
+      throw new lib.Error('NO_TITLE_IN_CHILDRENSTACK_CHILDREN_CHILD', 'Child option in childrenstack.children must have a title (String)');
+    }
+  }
+  function checkOptions (myoptions) {
+    if (!lib.isArray(myoptions.children)) {
+      throw new lib.Error('NO_CHILDREN_IN_CHILDRENSTACK');
+    }
+    myoptions.children.forEach(checkChildOption);
+  }
+  function ChildrenStackMixin (options) {
+    this.childrenStackElementMap = new lib.Map();
+    this.childrenStackStack = [];
+    this.childrenStackTopChanged = this.createBufferableHookCollection();
+    if (options && options.childrenstack) {
+      checkOptions(options.childrenstack);
+      options.childrenstack.children.forEach(this.addStackElement.bind(this));
+    }
+  }
+  function destroyer (thingy) {
+    thingy.destroy();
+  }
+  ChildrenStackMixin.prototype.destroy = function () {
+    if (this.childrenStackTopChanged) {
+      this.childrenStackTopChanged.destroy();
+    }
+    this.childrenStackTopChanged = null;
+    this.childrenStackStack = null;
+    if (this.childrenStackElementMap) {
+      this.childrenStackElementMap.traverse(destroyer);
+      this.childrenStackElementMap.destroy();
+    }
+    this.childrenStackElementMap = null;
+  };
+  ChildrenStackMixin.prototype.addStackElement = function (options, index) {
+    this.childrenStackElementMap.add(
+      options.name,
+      new ChildrenStackElement(
+        this.onStackElementActualChanged.bind(this),
+        options,
+        index
+      )
+    );
+  };
+  ChildrenStackMixin.prototype.onStackElementActualChanged = function (myelem, val) {
+    var stack, topel;
+    if (!lib.isArray(this.childrenStackStack)) {
+      return;
+    }
+    console.log('actual changed', myelem, val);
+    stack = this.childrenStackStack;
+    topel = stackTop.call(this);
+    if (val) {
+      if (topel == myelem) {
+        this.childrenStackTopChanged.fire(myelem, stack.length);
+        return;
+      }
+      stack.push(myelem);
+      this.childrenStackTopChanged.fire(myelem, stack.length);
+      if (topel) {
+        topel.elem.set('actual', false);
+      }
+      return;
+    }
+    if (topel == myelem) {
+      stack.pop();
+      topel = stackTop.call(this);
+      if (topel) {
+        topel.elem.set('actual', true);
+      }
+    }
+  };
+
+  //statics
+  function stackTop () {
+    if (!lib.isArray(this.childrenStackStack)) {
+      return null;
+    }
+    if (this.childrenStackStack.length<1) {
+      return null;
+    }
+    return this.childrenStackStack[this.childrenStackStack.length-1];
+  }
+  function addChild (chld) {
+    if (!this.childrenStackElementMap) {
+      return;
+    }
+    var stackelem = this.childrenStackElementMap.get(chld.id);
+    if (stackelem) {
+      stackelem.attachTo(chld);
+    }
+  }
+
+  //statics end
+
+  function addChildProducer (klass) {
+    return function (chld) {
+      addChild.call(this, chld);
+      return klass.prototype.addChild.call(this, chld);
+    };
+  }
+
+  ChildrenStackMixin.addMethods = function (klass, baseklass) {
+    lib.inheritMethods(klass, ChildrenStackMixin
+      , 'addStackElement'
+      , 'onStackElementActualChanged'
+    );
+    klass.prototype.addChild = addChildProducer(baseklass);
+    baseklass = null;
+  };
+
+  mylib.ChildrenStack = ChildrenStackMixin;
+}
+module.exports = createChildrenStackMixin;
+},{}],28:[function(require,module,exports){
 function createFormMixin (lib, mylib) {
   'use strict';
 
@@ -2975,7 +3138,7 @@ function createFormMixin (lib, mylib) {
 }
 module.exports = createFormMixin;
 
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 function createMixins (lib) {
   'use strict';
 
@@ -2984,13 +3147,14 @@ function createMixins (lib) {
   require('./neededconfigurationnamescreator')(lib, ret);
 
   require('./childactualizercreator')(lib, ret);
+  require('./childrenstackcreator')(lib, ret);
   require('./formcreator')(lib, ret);
   return ret;
 }
 
 module.exports = createMixins;
 
-},{"./childactualizercreator":26,"./formcreator":27,"./linksandlogicdestroyablecreator":29,"./neededconfigurationnamescreator":30}],29:[function(require,module,exports){
+},{"./childactualizercreator":26,"./childrenstackcreator":27,"./formcreator":28,"./linksandlogicdestroyablecreator":30,"./neededconfigurationnamescreator":31}],30:[function(require,module,exports){
 function createLinksAndLogicDestroyableMixin (lib, mylib) {
   'use strict';
 
@@ -3095,7 +3259,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
 
 module.exports = createLinksAndLogicDestroyableMixin;
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 function createNeededConfigurationNamesMixin (lib, mylib) {
   'use strict';
 
@@ -3137,7 +3301,7 @@ function createNeededConfigurationNamesMixin (lib, mylib) {
 
 module.exports = createNeededConfigurationNamesMixin;
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 function createModifiers (execlib, mixins, misc) {
   'use strict';
 
@@ -3337,7 +3501,7 @@ function createModifiers (execlib, mixins, misc) {
 
 module.exports = createModifiers;
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 module.exports = function createArryOperations(extend, readPropertyFromDotDelimitedString, isFunction, Map, AllexJSONizingError) {
   function union(a1, a2) {
     var ret = a1.slice();
@@ -3667,7 +3831,7 @@ module.exports = function createArryOperations(extend, readPropertyFromDotDelimi
   return ret;
 }; 
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
@@ -3914,7 +4078,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
 
 module.exports = createPreProcessingRegistry;
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 function createPreProcessingRegistries (lib, mixins) {
   'use strict';
 
@@ -3932,7 +4096,7 @@ function createPreProcessingRegistries (lib, mixins) {
 
 module.exports = createPreProcessingRegistries;
 
-},{"./basecreator":33,"./prepreprocessingregistrycreator":35,"./preprocessingregistrycreator.js":36}],35:[function(require,module,exports){
+},{"./basecreator":34,"./prepreprocessingregistrycreator":36,"./preprocessingregistrycreator.js":37}],36:[function(require,module,exports){
 function createPrePreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -3974,7 +4138,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPrePreProcessor;
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 function createPreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -4007,7 +4171,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPreProcessor;
 
-},{}],37:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4041,7 +4205,7 @@ function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHe
 
 module.exports = createCommandPreprocessor;
 
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4075,7 +4239,7 @@ function createDataCommandPreprocessor (lib, preprocessingregistrylib, Environme
 
 module.exports = createDataCommandPreprocessor;
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4115,7 +4279,7 @@ function createDataSourcePreprocessor (lib, preprocessingregistrylib, Environmen
 
 module.exports = createDataSourcePreprocessor;
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4225,7 +4389,7 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
 
 module.exports = createEnvironmentHelperPreprocessor;
 
-},{}],41:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4239,7 +4403,7 @@ function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
 
 module.exports = createPreProcessors;
 
-},{"./commandcreator":37,"./datacommandcreator":38,"./datasourcecreator":39,"./environmenthelpercreator":40}],42:[function(require,module,exports){
+},{"./commandcreator":38,"./datacommandcreator":39,"./datasourcecreator":40,"./environmenthelpercreator":41}],43:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),

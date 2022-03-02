@@ -80,7 +80,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     );
     */
     p.then(
-      this.loadDynamicElementsAndEnvironment.bind(this),
+      this.loadDynamicEnvironment.bind(this),
       this.reject.bind(this)
     )
     return ok.val;
@@ -174,11 +174,11 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
     this.resolve(firststageresult.concat(lateelemsresult));
   };
 
-  ElementLoaderJob.prototype.loadDynamicElementsAndEnvironment = function (resultuptonow) {
+  ElementLoaderJob.prototype.loadDynamicEnvironment = function (resultuptonow) {
     if (!this.okToProceed()) {
       return;
     }
-    (new mylib.LoadActualElementsAndEnvironment(this.destroyable)).go().then(
+    (new mylib.LoadActualEnvironment(this.destroyable)).go().then(
       this.resolve.bind(this, resultuptonow),
       this.reject.bind(this)
     );

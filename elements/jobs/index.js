@@ -5,7 +5,7 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
   var ret = {};
 
-  require('./environmentandelementscreator')(lib, DescriptorHandler, ret);
+  require('./environmentloadingcreator')(lib, DescriptorHandler, ret);
   require('./elementloadercreator')(lib, JobOnDestroyable, Resources, DescriptorHandler, ret);
   require('./elementunloadercreator')(lib, JobOnDestroyable, Resources, ret);
 
