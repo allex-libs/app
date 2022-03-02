@@ -99,12 +99,18 @@ function createChildrenStackMixin (lib, mylib) {
       )
     );
   };
+  ChildrenStackMixin.prototype.popChildrenStack = function () {
+    var topel = stackTop.call(this);
+    if (topel) {
+      topel.elem.set('actual', false);
+    }
+  };
   ChildrenStackMixin.prototype.onStackElementActualChanged = function (myelem, val) {
     var stack, topel;
     if (!lib.isArray(this.childrenStackStack)) {
       return;
     }
-    console.log('actual changed', myelem, val);
+    //console.log('actual changed', myelem, val);
     stack = this.childrenStackStack;
     topel = stackTop.call(this);
     if (val) {
@@ -160,6 +166,7 @@ function createChildrenStackMixin (lib, mylib) {
   ChildrenStackMixin.addMethods = function (klass, baseklass) {
     lib.inheritMethods(klass, ChildrenStackMixin
       , 'addStackElement'
+      , 'popChildrenStack'
       , 'onStackElementActualChanged'
     );
     klass.prototype.addChild = addChildProducer(baseklass);
