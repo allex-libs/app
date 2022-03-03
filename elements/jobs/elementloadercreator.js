@@ -57,20 +57,6 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
       lib.runNext(this.reject.bind(this, new lib.Error('IMPLEMENTATION_OBSOLETE', 'lateElementDescriptors is obsolete')));
       return;
     }
-    /*
-    if (!this.destroyable.integrationEnvironment) {
-      try {
-        intenvdesc = this.destroyable.actualEnvironmentDescriptor(this.destroyable.myNameOnMasterEnvironment());
-        if (intenvdesc) {
-          promises.push(this.loadIntegrationEnvironment(intenvdesc));
-        }
-      } catch (e) {
-        console.error('loadIntegrationEnvironment failed', e);
-        lib.runNext(this.reject.bind(this, e));
-        return ok.val;
-      }
-    }
-    */
     p = q.all(promises);
     //qlib.promise2defer(p, this);
     /*
@@ -114,26 +100,6 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
       return pktp.val;
     }
     this.destroyable.updateResource(resourcename);
-  };
-
-  ElementLoaderJob.prototype.loadIntegrationEnvironment = function (intenvdesc) {
-    var pktp = this.peekToProceed(), env;
-    if (!pktp.ok) {
-      return pktp.val;
-    }
-    env = new DescriptorHandler(intenvdesc);
-    return env.load().then(
-      this.onIntegrationEnvironment.bind(this),
-      this.onIntegrationEnvironmentFailed.bind(this)
-    );
-  };
-  ElementLoaderJob.prototype.onIntegrationEnvironment = function (result) {
-    this.destroyable.integrationEnvironment = result;
-    return result;
-  };
-  ElementLoaderJob.prototype.onIntegrationEnvironmentFailed = function (reason) {
-    console.error(reason);
-    throw reason;
   };
 
   ElementLoaderJob.prototype.createLateElements = function (resultuptonow) {
