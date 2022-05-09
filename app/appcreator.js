@@ -1,9 +1,9 @@
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, descriptorapi, arryopslib){
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
+    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers, descriptorapi, arryopslib);
 
   /**
    * @class
@@ -31,7 +31,6 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
    *
    */
   function App(){
-    this.jobs = new qlib.JobCollection();
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
@@ -42,7 +41,34 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
   }
 
   App.prototype.destroy = function () {
-    ///TODO, big TODO ...
+    if (this.ready) {
+      this.ready.destroy();
+    }
+    this.ready = null;
+    if (this._link) {
+      this._link.destroy();
+    }
+    this._link = null;
+    if (this.elements) {
+      lib.containerDestroyAll(this.elements);
+      this.elements.destroy();
+    }
+    this.elements = null;
+    if (this.commands) {
+      lib.containerDestroyAll(this.commands);
+      this.commands.destroy();
+    }
+    this.commands = null;
+    if(this.datasources) {
+      lib.containerDestroyAll(this.datasources);
+      this.datasources.destroy();
+    }
+    this.datasources = null;
+    if (this.environments) {
+      lib.containerDestroyAll(this.environments);
+      this.environments.destroy();
+    }
+    this.environments = null;
   };
 
   App.prototype._fireAppReady = function () {
@@ -56,7 +82,7 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     if (!(deschandler && deschandler.descriptor)) throw new Error('Missing descriptor');
     PrePreProcessor.process(deschandler.descriptor);
     PreProcessor.process(deschandler.descriptor);
-    return this.jobs.run('desc', new joblib.DescriptorLoaderJob(deschandler, this));
+    return (new joblib.DescriptorLoaderJob(deschandler, this)).go().then(null, function (reason) {console.error(reason); throw reason});
   };
 
   App.prototype.loadDescriptors = function (descs) {

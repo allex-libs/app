@@ -51,6 +51,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       dynamic: null
     };
     this._addHook ('onInitialized');
+    this._addHook('onInitiallyLoaded');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
     this.attachHook ('onInitialized', this.getConfigVal('onInitialized'));
@@ -162,9 +163,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.fireInitializationDone = function () {
     this.fireHook('onInitialized', [this]);
     this._removeHook ('onInitialized'); /// no need to keep this any more ...
-    this.set('initialized', true);
-    this.attachHook('onActual', this.getConfigVal('onActual'));
+    this.attachHook ('onInitiallyLoaded', this.getConfigVal('onInitiallyLoaded'));
     this.attachHook('onLoaded', this.getConfigVal('onLoaded'));
+    this.attachHook('onActual', this.getConfigVal('onActual'));
+
+    this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
   };
@@ -197,6 +200,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.onLoaded = function () {
+    this.fireHook('onInitiallyLoaded', [this]);
+    this._removeHook('onInitiallyLoaded');
+    this.fireHook('onLoaded', [this]);
     this.set('loading', false);
     this.loadEvent.fire(this);
   };
@@ -372,7 +378,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     }
     var hook = this._hooks.get(name);
     if (!hook) return;
-    hook.fire.apply (hook , args);
+    hook.fire.apply (hook, args);
   };
 
   BasicElement.prototype._removeHook = function (name) {

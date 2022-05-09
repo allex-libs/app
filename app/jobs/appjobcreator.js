@@ -8,7 +8,6 @@ function createAppJob (lib) {
   }
   lib.inherit(AppJob, JobOnDestroyableBase);
   AppJob.prototype.destroy = function () {
-    this.app = null;
     JobOnDestroyableBase.prototype.destroy.call(this);
   };
   AppJob.prototype._destroyableOk = function () {

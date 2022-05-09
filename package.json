@@ -16,8 +16,5 @@
     "lib"
   ],
   "author": "HERS Belgrade",
-  "license": "ISC",
-  "dependencies": {
-    "allex_arrayoperationslowlevellib": "1.x"
-  }
+  "license": "ISC"
 }

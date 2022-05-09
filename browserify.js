@@ -4,6 +4,7 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(
   ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'),
   ALLEX.execSuite.libRegistry.get('allex_environmentlib'),
   ALLEX.execSuite.libRegistry.get('allex_bufferableeventlib'),
-  ALLEX.execSuite.libRegistry.get('allex_datafilterslib')
+  ALLEX.execSuite.libRegistry.get('allex_datafilterslib'),
+  ALLEX.lib.arryOperations
 ));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');

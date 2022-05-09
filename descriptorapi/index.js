@@ -1,6 +1,18 @@
-function createDescriptorApi (lib) {
-  var ArryOps = require('allex_arrayoperationslowlevellib')(lib.extend, lib.readPropertyFromDotDelimitedString, lib.isFunction, lib.Map, lib.AllexJSONizingError);
-
+function createDescriptorApi (lib, ArryOps) {
+  function pushToArraySafe (arryname, desc, element) {
+    if (!lib.isString(arryname)) {
+      throw new lib.Error('NOT_A_STRING', 'The first parameter has to be a string');
+    }
+    if (!desc) {
+      throw new lib.Error('INVALID_DESCRIPTOR', 'The second parameter has to be an object');
+    }
+    var arry = desc[arryname];
+    if (!arry) {
+      arry = [];
+      desc[arryname] = arry;
+    }
+    arry.push(element);
+  }
   function ensureDescriptorArrayElementByPropertyName (propertyname, desc, arryname, arryelementname, defaultelement) {
     var arry, elem, mydefault;
     if (!desc) {
@@ -30,6 +42,7 @@ function createDescriptorApi (lib) {
   }
 
   return {
+    pushToArraySafe: pushToArraySafe,
     ensureDescriptorArrayElementByPropertyName: ensureDescriptorArrayElementByPropertyName, 
     ensureDescriptorArrayElementByName: ensureDescriptorArrayElementByName,
     ensureDescriptorArrayElementByType: ensureDescriptorArrayElementByType

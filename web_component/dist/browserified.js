@@ -119,12 +119,12 @@ function create (lib, Hierarchy, bufferableeventlib) {
 module.exports = create;
 
 },{}],2:[function(require,module,exports){
-function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor){
+function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, environtmentFactory, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, descriptorapi, arryopslib){
   'use strict';
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
+    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers, descriptorapi, arryopslib);
 
   /**
    * @class
@@ -152,7 +152,6 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
    *
    */
   function App(){
-    this.jobs = new qlib.JobCollection();
     this.environments = new lib.ListenableMap();
     this.datasources = new lib.Map();
     this.commands = new lib.Map();
@@ -163,7 +162,34 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
   }
 
   App.prototype.destroy = function () {
-    ///TODO, big TODO ...
+    if (this.ready) {
+      this.ready.destroy();
+    }
+    this.ready = null;
+    if (this._link) {
+      this._link.destroy();
+    }
+    this._link = null;
+    if (this.elements) {
+      lib.containerDestroyAll(this.elements);
+      this.elements.destroy();
+    }
+    this.elements = null;
+    if (this.commands) {
+      lib.containerDestroyAll(this.commands);
+      this.commands.destroy();
+    }
+    this.commands = null;
+    if(this.datasources) {
+      lib.containerDestroyAll(this.datasources);
+      this.datasources.destroy();
+    }
+    this.datasources = null;
+    if (this.environments) {
+      lib.containerDestroyAll(this.environments);
+      this.environments.destroy();
+    }
+    this.environments = null;
   };
 
   App.prototype._fireAppReady = function () {
@@ -177,7 +203,7 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     if (!(deschandler && deschandler.descriptor)) throw new Error('Missing descriptor');
     PrePreProcessor.process(deschandler.descriptor);
     PreProcessor.process(deschandler.descriptor);
-    return this.jobs.run('desc', new joblib.DescriptorLoaderJob(deschandler, this));
+    return (new joblib.DescriptorLoaderJob(deschandler, this)).go().then(null, function (reason) {console.error(reason); throw reason});
   };
 
   App.prototype.loadDescriptors = function (descs) {
@@ -258,7 +284,7 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
 }
 module.exports = createApp;
 
-},{"./jobs":9}],3:[function(require,module,exports){
+},{"./jobs":17}],3:[function(require,module,exports){
 function createCommand (lib) {
   'use strict';
 
@@ -542,14 +568,36 @@ function createCommand (lib) {
 module.exports = createCommand;
 
 },{}],6:[function(require,module,exports){
-function createAppLib (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor) {
+function createAppLib (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, descriptorapi, arryopslib) {
   'use strict';
-  return require('./appcreator')(lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor);
+  return require('./appcreator')(lib, dataSuite, Elements, Hierarchy, Resources, BasicParent, EnvironmentFactoryPromise, Linker, BasicElement, executeModifiers, PrePreProcessor, PreProcessor, descriptorapi, arryopslib);
 }
 
 module.exports = createAppLib;
 
 },{"./appcreator":2}],7:[function(require,module,exports){
+function createAppJobCore (lib) {
+  'use strict';
+
+  function AppJobCore (app) {
+    this.app = app;
+  }
+  AppJobCore.prototype.destroy = function () {
+    this.app = null;
+  };
+  AppJobCore.prototype.shouldContinue = function () {
+    if (!this.app) {
+      return new lib.Error('ALREADY_DESTROYED', 'This instance of'+this.constructor.name+' is already destroyed');
+    }
+    if (!this.app.environments) {
+      return new lib.Error('APP_ALREADY_DESTROYED', 'App '+this.app.constructor.name+' is already destroyed');
+    }
+  };
+
+  return AppJobCore;
+}
+module.exports = createAppJobCore;
+},{}],8:[function(require,module,exports){
 function createAppJob (lib) {
   'use strict';
 
@@ -560,7 +608,6 @@ function createAppJob (lib) {
   }
   lib.inherit(AppJob, JobOnDestroyableBase);
   AppJob.prototype.destroy = function () {
-    this.app = null;
     JobOnDestroyableBase.prototype.destroy.call(this);
   };
   AppJob.prototype._destroyableOk = function () {
@@ -572,111 +619,230 @@ function createAppJob (lib) {
 
 module.exports = createAppJob;
 
-},{}],8:[function(require,module,exports){
-function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environmentFactory, BasicElement, executeModifiers) {
+},{}],9:[function(require,module,exports){
+function createBaseDescriptorArrayProcessingCore (lib, mylib) {
+  'use strict';
+
+  var q = lib.q;
+
+  function DescriptorArrayJobCore (descriptorloaderjobcore, arrayname) {
+    this.descriptorLoaderJobCore = descriptorloaderjobcore;
+    this.arrayName = arrayname;
+    this.index = -1;
+    this.results = [];
+  }
+  DescriptorArrayJobCore.prototype.destroy = function () {
+    this.results = null;
+    this.index = null;
+    this.arrayName = null;
+    this.descriptorLoaderJobCore = null;
+  };
+  DescriptorArrayJobCore.prototype.shouldContinue = function () {
+    if (!this.descriptorLoaderJobCore) {
+      return new lib.Error('ALREADY_DESTROYED', 'This instance of '+this.constructor.name+' is already destroyed');
+    }
+    if (!this.descriptorLoaderJobCore.descriptor) {
+      return new lib.Error('INVALID_DESCRIPTOR_LOADER_JOB_CORE', 'This instance of '+this.constructor.name+' needs a valid DescriptorLoaderJobCore, but this one does not have a descriptor');
+    }
+    return this.descriptorLoaderJobCore.shouldContinue();
+  };
+  DescriptorArrayJobCore.prototype.app = function () {
+    return this.descriptorLoaderJobCore.app;
+  };
+  DescriptorArrayJobCore.prototype.descriptor = function () {
+    return this.descriptorLoaderJobCore.descriptor;
+  };
+  DescriptorArrayJobCore.prototype.array = function () {
+    return this.descriptor()[this.arrayName];
+  };
+  DescriptorArrayJobCore.prototype.stepOne = function (prevres) {
+    var arry = this.array(), oneres;
+    if (this.index >= 0) {
+      this.onItem(prevres);
+    }
+    if (!lib.isArray(arry)) {
+      return true;
+    }
+    this.index ++;
+    if (this.index >= arry.length) {
+      return this.results;
+    }
+    oneres = this.doOneItem(arry[this.index]);
+    if (q.isThenable(oneres)) {
+      return oneres.then(this.stepOne.bind(this));
+    }
+    return this.stepOne(oneres);
+  };
+  DescriptorArrayJobCore.prototype.doOneItem = function (item) {
+    throw new lib.Error('NOT_IMPLEMENTED', this.constructor.name+' has to implement doOneItem');
+  };
+  DescriptorArrayJobCore.prototype.onItem = function (item) {
+    this.results.push(item);
+  };
+  DescriptorArrayJobCore.prototype.steps = [
+    'stepOne'
+  ];
+
+  mylib.DescriptorArrayJobCore = DescriptorArrayJobCore;
+
+  /*
+  function DescriptorArrayNotifyingJobCore (descriptorloaderjobcore, arrayname) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, arrayname);
+    this.notify = new lib.HookCollection();
+  }
+  lib.inherit(DescriptorArrayNotifyingJobCore, DescriptorArrayJobCore);
+  DescriptorArrayNotifyingJobCore.prototype.destroy = function () {
+    if (this.notify) {
+      this.notify.destroy();
+    }
+    this.notify = null;
+    DescriptorArrayJobCore.prototype.destroy.call(this);
+  };
+  DescriptorArrayNotifyingJobCore.prototype.onItem = function (item) {
+    DescriptorArrayJobCore.prototype.onItem.call(this, item);
+    this.notify.fire(item);
+  };
+
+  mylib.DescriptorArrayNotifyingJobCore = DescriptorArrayNotifyingJobCore;
+  */
+}
+module.exports = createBaseDescriptorArrayProcessingCore;
+},{}],10:[function(require,module,exports){
+function createCommandsCreator (lib, dataSuite, arryopslib, mylib) {
+  'use strict';
+
+  var DescriptorArrayJobCore = mylib.DescriptorArrayJobCore,
+    Command = require('../../commandcreator')(lib),
+    FunctionCommand = require('../../functioncommandcreator')(lib);
+
+  function CommandsCreatorJobCore (descriptorloaderjobcore) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, 'commands');
+  }
+  lib.inherit(CommandsCreatorJobCore, DescriptorArrayJobCore);
+  CommandsCreatorJobCore.prototype.doOneItem = function (commdesc) {
+    var fc = null, desc, e, c, c_name;
+    if (!commdesc.command) throw new Error('No command in '+toString(commdesc));
+    desc = this.descriptor();
+    fc = this.app().commands.get(commdesc.command);
+    if (fc) {
+      return;
+    }
+    if (lib.isFunction(commdesc.handler)){
+      return {
+        desc:commdesc,
+        comm: new FunctionCommand(commdesc.command, commdesc.handler),
+        isfunc: true
+      };
+    }else{
+      if (!commdesc.environment) throw new Error('No environment in '+toString(commdesc));
+      e = commdesc.environment ? arryopslib.findElementWithProperty(desc.environments, 'name', commdesc.environment) : null;
+      if (!e && !lib.isFunction(commdesc.handler)) throw new Error('Unable to find environment '+commdesc.environment);
+
+      c_name = commdesc.ecommand || commdesc.command; 
+      c = arryopslib.findElementWithProperty(e.options.commands, 'name', c_name);
+
+      if (!c) {
+        c = arryopslib.findElementWithProperty(e.options.datacommands, 'name', c_name);
+        if (!c)
+          console.warn('Unable to find command '+c_name+' in environment descriptor');
+      }
+      return {
+        desc: commdesc,
+        comm: new Command (c_name),
+        isfunc: false
+      };
+    }
+  };
+
+  mylib.CommandsCreatorJobCore = CommandsCreatorJobCore;
+}
+module.exports = createCommandsCreator;
+},{"../../commandcreator":3,"../../functioncommandcreator":5}],11:[function(require,module,exports){
+function createDataSourcesCreator (lib, dataSuite, arryopslib, mylib) {
+  'use strict';
+
+  var DescriptorArrayJobCore = mylib.DescriptorArrayJobCore,
+    DataSource = require('../../datasourcecreator')(lib, dataSuite);
+
+  function DataSourcesCreatorJobCore (descriptorloaderjobcore) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, 'datasources');
+  }
+  lib.inherit(DataSourcesCreatorJobCore, DescriptorArrayJobCore);
+  DataSourcesCreatorJobCore.prototype.doOneItem = function (dsdesc) {
+    var source_name, desc, environment, e_datasource, ds;
+    if (!dsdesc.name) throw new Error ('Datasource has no name: '+toString(dsdesc));
+    if (!dsdesc.environment) throw new Error('Datasource has no environment: '+toString(dsdesc));
+
+    desc = this.descriptor();
+    source_name = dsdesc.source || dsdesc.name;
+    environment = arryopslib.findElementWithProperty(desc.environments, 'name', dsdesc.environment);
+
+    if (!environment) throw new Error('Unable to find environment descriptor '+dsdesc.environment);
+    e_datasource = arryopslib.findElementWithProperty(environment.options.datasources, 'name', source_name);
+    if (!e_datasource) {
+      e_datasource = arryopslib.findElementWithProperty(environment.options.datacommands, 'name', source_name);
+      if (!e_datasource)
+        console.warn('Unable to find datasource '+source_name+' within environment description');
+    }
+
+    if (this.app().datasources.get(dsdesc.name)) {
+      return;
+    }
+    return {
+      desc: dsdesc,
+      ds: new DataSource(source_name, 'should_running' in dsdesc ? dsdesc.should_running : true, 'filter' in dsdesc ? dsdesc.filter : null, 'initial_value' in dsdesc ? dsdesc.initial_value : null)
+    };
+
+  };
+
+  mylib.DataSourcesCreatorJobCore = DataSourcesCreatorJobCore;
+}
+module.exports = createDataSourcesCreator;
+},{"../../datasourcecreator":4}],12:[function(require,module,exports){
+function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
   'use strict';
 
   var q = lib.q,
-    qlib = lib.qlib,
-    Command = require('../commandcreator')(lib),
-    FunctionCommand = require('../functioncommandcreator')(lib),
-    DataSource = require('../datasourcecreator')(lib, dataSuite);
+    DescriptorArrayJobCore = mylib.DescriptorArrayJobCore;
 
-  //supporting the "no environmentlib" case
-
-  function DescriptorLoaderJob (descriptorhandler, app, defer) {
-    AppJob.call(this, app, defer);
-    this.descriptorHandler = descriptorhandler;
+  function ElementsCreatorJobCore (descriptorloaderjobcore, creationcb) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, 'elements');
+    this.creationCB = lib.isFunction(creationcb) ? creationcb : lib.dummyFunc;
   }
-  lib.inherit(DescriptorLoaderJob, AppJob);
-  DescriptorLoaderJob.prototype.destroy = function () {
-    this.descriptorHandler = null;
-    AppJob.prototype.destroy.call(this);
+  lib.inherit(ElementsCreatorJobCore, DescriptorArrayJobCore);
+  ElementsCreatorJobCore.prototype.destroy = function () {
+    this.creationCB = null;
+    DescriptorArrayJobCore.prototype.destroy.call(this);
   };
-  DescriptorLoaderJob.prototype._destroyableOk = function () {
-    var ret = AppJob.prototype._destroyableOk.call(this);
-    if (!ret) {
+  ElementsCreatorJobCore.prototype.doOneItem = function (elemdesc) {
+    var elem, hook, d, ret;
+    d = q.defer();
+    ret = d.promise;
+    elemdesc.options = elemdesc.options || {};
+    descriptorapi.pushToArraySafe('onInitiallyLoaded', elemdesc.options, onLoadResolver.bind(null, d));
+    elem = this.doCreate(elemdesc);
+    d = null;
+    if (elem && elem.get('actual')) {
       return ret;
     }
-    if (!this.descriptorHandler) {
-      throw new lib.Error('ALREADY_DESTROYED', 'No descriptorHandler');
-    }
-    if (!this.descriptorHandler.environmentNames) {
-      throw new lib.Error('DESCHANDLER_ALREADY_DESTROYED', 'No descriptorHandler.environmentNames');
-    }
-    return true;
+    return elem;
   };
-  DescriptorLoaderJob.prototype.go = function () {
-    var ok = this.okToGo(), desc;
-    if (!ok.ok) {
-      return ok.val;
+  ElementsCreatorJobCore.prototype.doCreate = function (elemdesc) {
+    var parentandfinalname, makeupdesc;
+    parentandfinalname = parentAndFinalNameForElementDescriptor(this.app(), elemdesc);
+    if (!parentandfinalname) {
+      throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(elemdesc)+' is not a valid element descriptor');
     }
-    desc = this.descriptorHandler.descriptor;
-    if (!desc) {
-      this.resolve(this.descriptorHandler);
-      return;
+    if (parentandfinalname.parent) {
+      makeupdesc = lib.extend(lib.pickExcept(elemdesc, ['name']), {name: parentandfinalname.name});
+      return parentandfinalname.parent.createElement(makeupdesc);
     }
-    try {
-      lib.traverseShallow (
-        desc.datasources,
-        linkDataSource.bind(null, this.destroyable.datasources, this.destroyable.environments, this.descriptorHandler)
-      );
-      lib.traverseShallow (
-        desc.commands,
-        linkCommand.bind(null, this.destroyable.commands, this.destroyable.environments, this.descriptorHandler)
-      );
-    } catch(e) {
-      console.error(e);
-      this.reject(e);
-      return ok.val;
-    }
+    return BasicElement.createElement (elemdesc, this.creationCB);
+  };
 
-    this.loadEnvironments().then(
-      this.handleResources.bind(this)
-    );
 
-    return ok.val;
-  };
-  DescriptorLoaderJob.prototype.handleResources = function () {
-    if (!this.okToProceed()) {
-      return;
-    }
-    ///TODO: what should we do while loading common resources?
-    if (this.descriptorHandler.descriptor.resources) {
-      //q.all(this.descriptorHandler.descriptor.resources.map(Resources.resourceFactory.bind(Resources, this.destroyable)))
-      this.descriptorHandler.descriptor.resources.map(Resources.loadResourceParams.bind(Resources));
-    }
-    this.onResourcesLoaded();
-  };
-  DescriptorLoaderJob.prototype.onResourcesLoaded = function () {
-    return this.loadElements();
-    //this.onAllDone();
-  };
-  DescriptorLoaderJob.prototype.loadElements = function () {
-    if (!this.okToProceed()) {
-      return;
-    }
-    try {
-      executeModifiers(false, this.descriptorHandler.descriptor);
-      if (lib.isArray(this.descriptorHandler.descriptor.elements)) {
-        this.descriptorHandler.descriptor.elements.forEach (this.createElement.bind(this));
-      }
-
-      this.produceLinks().then(
-        this.produceLogic.bind(this)
-      ).then(
-        this.onElementsLoaded.bind(this)
-      );
-    } catch(e) {
-      console.error(e);
-      this.reject(e);
-    }
-  };
-  DescriptorLoaderJob.prototype.onElementsLoaded = function () {
-    this.onAllDone();
-  };
   function parentAndFinalNameForElementDescriptor (app, desc) {
-    var namearry, parent, possiblename;
+    var namearry, possiblename;
     if (!desc) {
       return null;
     }
@@ -695,187 +861,295 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
     }
     return {parent: null, name: desc.name};
   }
-  DescriptorLoaderJob.prototype.createElement = function (desc) {
-    var parentandfinalname, makeupdesc;
-    if (!this.okToProceed()) {
-      return;
-    }
-    parentandfinalname = parentAndFinalNameForElementDescriptor(this.destroyable, desc);
-    if (!parentandfinalname) {
-      throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(desc)+' is not a valid element descriptor');
-    }
-    if (parentandfinalname.parent) {
-      makeupdesc = lib.extend(lib.pickExcept(desc, ['name']), {name: parentandfinalname.name});
-      parentandfinalname.parent.createElement(makeupdesc);
-      return;
-    }
-    BasicElement.createElement (desc, this.addElement.bind(this));
-  };
-  DescriptorLoaderJob.prototype.addElement = function (el) {
-    var id;
-    if (!this.okToProceed()) {
-      return;
-    }
-    id = el.get('id');
-    this.destroyable.elements.add(id, el);
-    this.descriptorHandler.addElementID(id);
-  };
-  DescriptorLoaderJob.prototype.produceLinks = function () {
-    if (!this.okToProceed()) {
-      return;
-    }
-    var links;
-    try {
-      links = this.destroyable._link.produceLinks(this.descriptorHandler.descriptor.links);
-      return links.then(
-        this.descriptorHandler.setLinks.bind(this.descriptorHandler)
-      );
-    } catch (e) {
-      console.error(e);
-      this.reject(e);
-    }
-  };
-  DescriptorLoaderJob.prototype.produceLogic = function () {
-    if (!this.okToProceed()) {
-      return;
-    }
-    var logic;
-    try {
-      logic = this.destroyable._link.produceLogic(this.descriptorHandler.descriptor.logic);
-      return logic.then(
-        this.descriptorHandler.setLogic.bind(this.descriptorHandler)
-      );
-    } catch (e) {
-      console.error(e);
-      this.reject(e);
-    }
-  };
-  DescriptorLoaderJob.prototype.loadEnvironments = function () {
-    if (!lib.isFunction(environmentFactory)) {
-      console.warn('Environment factory not found. Did you load allex_environmentlib?')
-      return q(true);
-    }
-    if (!this.okToProceed()) {
-      return;
-    }
-    if (!lib.isArray(this.descriptorHandler.descriptor.environments)) {
-      return q(true);
-    }
-    this.descriptorHandler.descriptor.environments.forEach(this.createEnvironment.bind(this));
-    return q(true);
-  };
-  DescriptorLoaderJob.prototype.createEnvironment = function (envdesc) {
-    console.log('createEnvironment', envdesc);
-    var env, name;
-    if (!this.okToProceed()) {
-      return;
-    }
+
+  function onLoadResolver (d, elem) {
+    d.resolve(elem);
+  }
+
+
+  mylib.ElementsCreatorJobCore = ElementsCreatorJobCore;
+}
+module.exports = createElementsCreator;
+},{}],13:[function(require,module,exports){
+function createEnvironmentsCreator (lib, environmentFactory, mylib) {
+  'use strict';
+
+  var DescriptorArrayJobCore = mylib.DescriptorArrayJobCore;
+
+  function EnvironmentsCreatorJobCore (descriptorloaderjobcore) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, 'environments');
+  }
+  lib.inherit(EnvironmentsCreatorJobCore, DescriptorArrayJobCore);
+  EnvironmentsCreatorJobCore.prototype.doOneItem = function (envdesc) {
+    var env, name, res = {env: null, new: false, envdesc: envdesc};
     try {
       name = envdesc.name;
-      env = this.destroyable.environments.get(name);
+      env = this.app().environments.get(name);
       if (!env) {
+        console.log('createEnvironment', envdesc);
         env = environmentFactory(envdesc);
-        this.destroyable.environments.add(name, env);
-        this.descriptorHandler.environmentNames.push(name);
+        res.env = env;
+        res.new = true;
       } else {
-        env.addDataSources(envdesc.options.datasources);
-        env.addCommands(envdesc.options.commands);
-        env.addDataCommands(envdesc.options.datacommands);
+       res.env = env;
+       res.new = false;
       }
+      return res;
     } catch (e) {
       console.error(e);
-      this.reject(e);
+      throw e;
     }
   };
-  DescriptorLoaderJob.prototype.onAllDone = function () {
-    var desc;
-    if (!this.okToProceed()) {
+
+  mylib.EnvironmentsCreatorJobCore = EnvironmentsCreatorJobCore;
+}
+module.exports = createEnvironmentsCreator;
+},{}],14:[function(require,module,exports){
+function createDescriptorArrayProcessingCores (lib, dataSuite, Resources, environtmentFactory, BasicElement, descriptorapi, arryopslib) {
+  'use strict';
+  var mylib = {};
+
+  require('./basecreator')(lib, mylib);
+  require('./environmentscreatorcreator')(lib, environtmentFactory, mylib);
+  require('./elementscreatorcreator')(lib, BasicElement, descriptorapi, mylib);
+  require('./datasourcescreatorcreator')(lib, dataSuite, arryopslib, mylib);
+  require('./commandsscreatorcreator')(lib, dataSuite, arryopslib, mylib);
+  require('./resourcesloadercreator')(lib, Resources, mylib);
+
+  return mylib;
+}
+module.exports = createDescriptorArrayProcessingCores;
+},{"./basecreator":9,"./commandsscreatorcreator":10,"./datasourcescreatorcreator":11,"./elementscreatorcreator":12,"./environmentscreatorcreator":13,"./resourcesloadercreator":15}],15:[function(require,module,exports){
+function createResourcesLoader (lib, Resources, mylib) {
+  'use strict';
+
+  var DescriptorArrayJobCore = mylib.DescriptorArrayJobCore,
+    Command = require('../../commandcreator')(lib),
+    FunctionCommand = require('../../functioncommandcreator')(lib);
+
+  function ResourcesLoaderJobCore (descriptorloaderjobcore) {
+    DescriptorArrayJobCore.call(this, descriptorloaderjobcore, 'resources');
+  }
+  lib.inherit(ResourcesLoaderJobCore, DescriptorArrayJobCore);
+  ResourcesLoaderJobCore.prototype.doOneItem = function (resourcedesc) {
+    return Resources.loadResourceParams(resourcedesc);
+  };
+
+  mylib.ResourcesLoaderJobCore = ResourcesLoaderJobCore;
+}
+module.exports = createResourcesLoader;
+},{"../../commandcreator":3,"../../functioncommandcreator":5}],16:[function(require,module,exports){
+function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib, dataSuite, Resources, environmentFactory, BasicElement, executeModifiers) {
+  'use strict';
+
+  var q = lib.q,
+    qlib = lib.qlib;
+
+  var _stackDepth = 0;
+
+  function DescriptorLoaderJobCore (descriptorhandler, app) {
+    AppJobCore.call(this, app);
+    this.descriptorHandler = descriptorhandler;
+    this.descriptor = null;
+  }
+  lib.inherit(DescriptorLoaderJobCore, AppJobCore);
+  DescriptorLoaderJobCore.prototype.destroy = function () {
+    this.descriptor = null;
+    this.descriptorHandler = null;
+    AppJobCore.prototype.destroy.call(this);
+  };
+  DescriptorLoaderJobCore.prototype.shouldContinue = function () {
+    var ret = AppJobCore.prototype.shouldContinue.call(this);
+    if (ret) {
+      return ret;
+    }
+    if (!this.descriptorHandler) {
+      return new lib.Error('ALREADY_DESTROYED', 'This instance of '+this.contructor.name+' has no descriptorhandler');
+    }
+    if (!this.descriptorHandler.environmentNames) {
+      return new lib.Error('DESCHANDLER_ALREADY_DESTROYED', 'This instance of '+this.contructor.name+' has no descriptorHandler.environmentNames');
+    }
+  };
+  DescriptorLoaderJobCore.prototype.init = function () {
+    _stackDepth ++;
+    return this.descriptorHandler.descriptor;
+  };
+  DescriptorLoaderJobCore.prototype.onInit = function (desc) {
+    this.descriptor = desc;
+    if (this.descriptor) {
+      executeModifiers(false, this.descriptor);
+    }
+  };
+  DescriptorLoaderJobCore.prototype.createEnvironments = function () {
+    if (!this.descriptor) {
       return;
     }
-    this.destroyable.elements.traverse(unbuffer);
-    desc = this.descriptorHandler.descriptor;
-    if (desc && lib.isFunction (desc.onLoaded)) {
-      desc.onLoaded(this);
-    }
-    this.resolve(this.descriptorHandler);
+    return (qlib.newSteppedJobOnSteppedInstance(
+      new descarryprocessingcoreslib.EnvironmentsCreatorJobCore(this)
+    )).go();
   };
+  DescriptorLoaderJobCore.prototype.onEnvironments = function (envresults) {
+    if (lib.isArray(envresults)) {
+      envresults.forEach(this.loadEnvironment.bind(this));
+      return;
+    }
+  };
+  DescriptorLoaderJobCore.prototype.createDataSources = function () {
+    if (!this.descriptor) {
+      return;
+    }
+    return (qlib.newSteppedJobOnSteppedInstance(
+      new descarryprocessingcoreslib.DataSourcesCreatorJobCore(this)
+    )).go();
+  };
+  DescriptorLoaderJobCore.prototype.onDataSources = function (dsresults) {
+    if (lib.isArray(dsresults)) {
+      dsresults.forEach(this.handleDataSource.bind(this));
+    }
+  };
+  DescriptorLoaderJobCore.prototype.createCommands = function () {
+    if (!this.descriptor) {
+      return;
+    }
+    return (qlib.newSteppedJobOnSteppedInstance(
+      new descarryprocessingcoreslib.CommandsCreatorJobCore(this)
+    )).go();
+  };
+  DescriptorLoaderJobCore.prototype.onCommands = function (commandresults) {
+    if (lib.isArray(commandresults)) {
+      commandresults.forEach(this.handleCommand.bind(this));
+    }
+  };
+  DescriptorLoaderJobCore.prototype.loadResources = function () {
+    if (!this.descriptor) {
+      return;
+    }
+    return (qlib.newSteppedJobOnSteppedInstance(
+      new descarryprocessingcoreslib.ResourcesLoaderJobCore(this)
+    )).go();
+  };
+  DescriptorLoaderJobCore.prototype.onResourcesLoaded = function (rsrcs) {
+  };
+  DescriptorLoaderJobCore.prototype.createElements = function () {
+    if (!this.descriptor) {
+      return;
+    }
+    return qlib.newSteppedJobOnSteppedInstance(
+      new descarryprocessingcoreslib.ElementsCreatorJobCore(this, this.addElement.bind(this))
+    ).go();
+  };
+  DescriptorLoaderJobCore.prototype.onCreateElements = function (elems) {
+    /*
+    if (lib.isArray(elems)) {
+      elems.forEach(this.addElement.bind(this));
+    }
+    */
+  };
+  DescriptorLoaderJobCore.prototype.createLinks = function () {
+    return this.app._link.produceLinks(this.descriptor.links);
+  };
+  DescriptorLoaderJobCore.prototype.onLinks = function (links) {
+    this.descriptorHandler.setLinks(links);
+  };
+  DescriptorLoaderJobCore.prototype.createLogic = function () {
+    return this.app._link.produceLogic(this.descriptor.logic);
+  };
+  DescriptorLoaderJobCore.prototype.onLogic = function (logic) {
+    this.descriptorHandler.setLogic(logic);
+  };
+  DescriptorLoaderJobCore.prototype.finalize = function () {
+    _stackDepth --;
+    if (_stackDepth==0) {
+      this.app.elements.traverse(unbuffer);
+    }
+    if (this.descriptor && lib.isFunction (this.descriptor.onLoaded)) {
+      this.descriptor.onLoaded(this);
+    }
+    return this.descriptorHandler;
+  };
+
+  DescriptorLoaderJobCore.prototype.loadEnvironment = function (envres) {
+    var name, env;
+    if (!(envres && envres.envdesc && envres.env)) {return;}
+    name = envres.envdesc.name;
+    env = envres.env;
+    if (envres.new) {
+      this.app.environments.add(name, env);
+      this.descriptorHandler.environmentNames.push(name);
+      return;
+    }
+    env.addDataSources(envres.envdesc.options.datasources);
+    env.addCommands(envres.envdesc.options.commands);
+    env.addDataCommands(envres.envdesc.options.datacommands);
+  };
+  DescriptorLoaderJobCore.prototype.addElement = function (el) {
+    var id = el.get('id');
+    this.app.elements.add(id, el);
+    this.descriptorHandler.addElementID(id);
+  };
+  DescriptorLoaderJob.prototype.addJustCreatedElement = function (elobj) {
+    if (!(elobj && elobj.__justcreated)) {
+      return;
+    }
+    this.addElement(elobj.__justcreated);
+  }
+  DescriptorLoaderJobCore.prototype.handleDataSource = function (dsresult) {
+    var ds, dsdesc;
+    if (!(dsresult && dsresult.desc && dsresult.ds)) {return;} //was already found in this.app.datasources
+    ds = dsresult.ds;
+    dsdesc = dsresult.desc;
+    this.app.datasources.add(dsdesc.name, ds);
+    this.descriptorHandler.dataSourceNames.push(dsdesc.name);
+    this.app.environments.listenFor (dsdesc.environment, ds.set.bind(ds, 'environment'));
+    ds = null;
+  };
+  DescriptorLoaderJobCore.prototype.handleCommand = function (commresult) {
+    var commdesc, fc;
+    if (!(commresult && commresult.desc && commresult.comm)) {
+      return;
+    }
+    commdesc = commresult.desc;
+    fc = commresult.comm;
+    this.descriptorHandler.commandNames.push(commdesc.command);
+    this.app.commands.add(commdesc.command, fc);
+    this.app.environments.listenFor (commdesc.environment, fc.set.bind(fc, 'environment'));
+  };
+  DescriptorLoaderJobCore.prototype.handleLink = function (links) {
+    this.descriptorHandler.setLinks(links);
+  };
+
+  DescriptorLoaderJobCore.prototype.steps = [
+    'init',
+    'onInit',
+    'createEnvironments',
+    'onEnvironments',
+    'createDataSources',
+    'onDataSources',
+    'createCommands',
+    'onCommands',
+    'loadResources',
+    'onResourcesLoaded',
+    'createElements',
+    'onCreateElements',
+    'createLinks',
+    'onLinks',
+    'createLogic',
+    'onLogic',
+    'finalize'
+  ];
 
   function unbuffer (el) {
     el.unbufferAllBufferableHookCollections();
   }
 
-
-  /* creation */
-  function toString (item) {
-    return JSON.stringify(item, null, 2);
+  function DescriptorLoaderJob (descriptorhandler, app, defer) {
+    qlib.SteppedJobOnSteppedInstance.call(
+      this, 
+      new DescriptorLoaderJobCore(descriptorhandler, app),
+      defer
+    );
   }
-
-  function findByField (fieldname, val, item) {
-    if (item[fieldname] === val) return item;
-  }
-
-  function linkDataSource (datasources, environments, deschandler, item) {
-    var source_name, desc, environment, e_datasource, ds;
-    if (!item.name) throw new Error ('Datasource has no name: '+toString(item));
-    if (!item.environment) throw new Error('Datasource has no environment: '+toString(item));
-
-    desc = deschandler.descriptor;
-    source_name = item.source || item.name;
-    environment = lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment));
-
-    if (!environment) throw new Error('Unable to find environment descriptor '+item.environment);
-    e_datasource = lib.traverseConditionally (environment.options.datasources, findByField.bind(null, 'name', source_name));
-    if (!e_datasource) {
-      e_datasource = lib.traverseConditionally (environment.options.datacommands, findByField.bind(null, 'name', source_name));
-      if (!e_datasource)
-        console.warn('Unable to find datasource '+source_name+' within environment description');
-    }
-
-    ds = datasources.get(item.name);
-    if (ds) {
-      return;
-    }
-    ds = new DataSource(source_name, 'should_running' in item ? item.should_running : true, 'filter' in item ? item.filter : null, 'initial_value' in item ? item.initial_value : null);
-    datasources.add(item.name, ds);
-    deschandler.dataSourceNames.push(item.name);
-    environments.listenFor (item.environment, ds.set.bind(ds, 'environment'));
-  }
-
-
-  function linkCommand (commands, environments, deschandler, item) {
-    var fc = null, desc, e, c, c_name;
-    if (!item.command) throw new Error('No command in '+toString(item));
-    desc = deschandler.descriptor;
-    fc = commands.get(item.command);
-    if (fc) {
-      return;
-    }
-    if (lib.isFunction(item.handler)){
-      fc = new FunctionCommand(item.command, item.handler);
-    }else{
-      if (!item.environment) throw new Error('No environment in '+toString(item));
-      e = item.environment ? lib.traverseConditionally (desc.environments, findByField.bind(null, 'name', item.environment)) : null;
-      if (!e && !lib.isFunction(item.handler)) throw new Error('Unable to find environment '+item.environment);
-
-      if (!e && lib.isFunction (item.handler)) {
-      }
-
-      c_name = item.ecommand || item.command; 
-      c = lib.traverseConditionally (e.options.commands, findByField.bind(null, 'name', c_name));
-
-      if (!c) {
-        c = lib.traverseConditionally (e.options.datacommands, findByField.bind(null, 'name', c_name));
-        if (!c)
-          console.warn('Unable to find command '+c_name+' in environment descriptor');
-      }
-      fc = new Command (c_name);
-      environments.listenFor (item.environment, fc.set.bind(fc, 'environment'));
-    }
-    deschandler.commandNames.push(item.command);
-    commands.add(item.command, fc);
-  }
-
-  /* loading section done */
+  lib.inherit(DescriptorLoaderJob, qlib.SteppedJobOnSteppedInstance);
 
   return DescriptorLoaderJob;
 }
@@ -883,12 +1157,14 @@ function createDescriptorLoaderJob (lib, AppJob, dataSuite, Resources, environme
 module.exports = createDescriptorLoaderJob;
 
 
-},{"../commandcreator":3,"../datasourcecreator":4,"../functioncommandcreator":5}],9:[function(require,module,exports){
-function createAppJobs (lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers) {
+},{}],17:[function(require,module,exports){
+function createAppJobs (lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers, descriptorapi, arryopslib) {
   'use strict';
 
   var AppJob = require('./appjobcreator')(lib),
-    DescriptorLoaderJob = require('./descriptorloaderjobcreator')(lib, AppJob, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
+    AppJobCore = require('./appjobcorecreator')(lib),
+    descarryprocessingcoreslib = require('./descarrayprocessingcores')(lib, dataSuite, Resources, environtmentFactory, BasicElement, descriptorapi, arryopslib),
+    DescriptorLoaderJob = require('./descriptorloaderjobcreator')(lib, AppJobCore, descarryprocessingcoreslib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers);
 
   return {
     AppJob: AppJob,
@@ -898,18 +1174,19 @@ function createAppJobs (lib, dataSuite, Resources, environtmentFactory, BasicEle
 
 module.exports = createAppJobs;
 
-},{"./appjobcreator":7,"./descriptorloaderjobcreator":8}],10:[function(require,module,exports){
+},{"./appjobcorecreator":7,"./appjobcreator":8,"./descarrayprocessingcores":14,"./descriptorloaderjobcreator":16}],18:[function(require,module,exports){
 ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(
   ALLEX,
   ALLEX.execSuite.libRegistry.get('allex_applinkinglib'),
   ALLEX.execSuite.libRegistry.get('allex_hierarchymixinslib'),
   ALLEX.execSuite.libRegistry.get('allex_environmentlib'),
   ALLEX.execSuite.libRegistry.get('allex_bufferableeventlib'),
-  ALLEX.execSuite.libRegistry.get('allex_datafilterslib')
+  ALLEX.execSuite.libRegistry.get('allex_datafilterslib'),
+  ALLEX.lib.arryOperations
 ));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./libindex":24}],11:[function(require,module,exports){
+},{"./libindex":32}],19:[function(require,module,exports){
 function createDataElementMixin (lib, mylib) {
   'use strict';
 
@@ -1043,7 +1320,7 @@ function createDataElementMixin (lib, mylib) {
 
 module.exports = createDataElementMixin;
 
-},{}],12:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 function createDataElementFollowerMixin (lib, mylib) {
   'use strict';
 
@@ -1105,7 +1382,7 @@ function createDataElementFollowerMixin (lib, mylib) {
 
 module.exports = createDataElementFollowerMixin;
 
-},{}],13:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 function createDataUpdaterMixin (lib, mylib) {
   'use strict';
 
@@ -1138,7 +1415,7 @@ function createDataUpdaterMixin (lib, mylib) {
 }
 module.exports = createDataUpdaterMixin;
 
-},{}],14:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
   'use strict';
 
@@ -1307,7 +1584,7 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
 }
 module.exports = createFromDataCreatorMixin;
 
-},{}],15:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 function createDataMixins (lib, elements, datafilterslib, mixins) {
   'use strict';
 
@@ -1318,10 +1595,22 @@ function createDataMixins (lib, elements, datafilterslib, mixins) {
 }
 module.exports = createDataMixins;
 
-},{"./dataelementcreator":11,"./dataelementfollowercreator":12,"./dataupdatercreator":13,"./fromdatacreator":14}],16:[function(require,module,exports){
-function createDescriptorApi (lib) {
-  var ArryOps = require('allex_arrayoperationslowlevellib')(lib.extend, lib.readPropertyFromDotDelimitedString, lib.isFunction, lib.Map, lib.AllexJSONizingError);
-
+},{"./dataelementcreator":19,"./dataelementfollowercreator":20,"./dataupdatercreator":21,"./fromdatacreator":22}],24:[function(require,module,exports){
+function createDescriptorApi (lib, ArryOps) {
+  function pushToArraySafe (arryname, desc, element) {
+    if (!lib.isString(arryname)) {
+      throw new lib.Error('NOT_A_STRING', 'The first parameter has to be a string');
+    }
+    if (!desc) {
+      throw new lib.Error('INVALID_DESCRIPTOR', 'The second parameter has to be an object');
+    }
+    var arry = desc[arryname];
+    if (!arry) {
+      arry = [];
+      desc[arryname] = arry;
+    }
+    arry.push(element);
+  }
   function ensureDescriptorArrayElementByPropertyName (propertyname, desc, arryname, arryelementname, defaultelement) {
     var arry, elem, mydefault;
     if (!desc) {
@@ -1351,6 +1640,7 @@ function createDescriptorApi (lib) {
   }
 
   return {
+    pushToArraySafe: pushToArraySafe,
     ensureDescriptorArrayElementByPropertyName: ensureDescriptorArrayElementByPropertyName, 
     ensureDescriptorArrayElementByName: ensureDescriptorArrayElementByName,
     ensureDescriptorArrayElementByType: ensureDescriptorArrayElementByType
@@ -1360,7 +1650,7 @@ function createDescriptorApi (lib) {
 module.exports = createDescriptorApi;
     
 
-},{"allex_arrayoperationslowlevellib":33}],17:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 function createDescriptorHandler (lib, mixins, ourlib) {
   'use strict';
   var q = lib.q,
@@ -1443,7 +1733,7 @@ function createDescriptorHandler (lib, mixins, ourlib) {
 
 module.exports = createDescriptorHandler;
 
-},{}],18:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler) {
   /*
     possible config params : 
@@ -1497,6 +1787,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       dynamic: null
     };
     this._addHook ('onInitialized');
+    this._addHook('onInitiallyLoaded');
     this._addHook ('onActual');
     this._addHook ('onLoaded');
     this.attachHook ('onInitialized', this.getConfigVal('onInitialized'));
@@ -1608,9 +1899,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   BasicElement.prototype.fireInitializationDone = function () {
     this.fireHook('onInitialized', [this]);
     this._removeHook ('onInitialized'); /// no need to keep this any more ...
-    this.set('initialized', true);
-    this.attachHook('onActual', this.getConfigVal('onActual'));
+    this.attachHook ('onInitiallyLoaded', this.getConfigVal('onInitiallyLoaded'));
     this.attachHook('onLoaded', this.getConfigVal('onLoaded'));
+    this.attachHook('onActual', this.getConfigVal('onActual'));
+
+    this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
   };
@@ -1643,6 +1936,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   BasicElement.prototype.onLoaded = function () {
+    this.fireHook('onInitiallyLoaded', [this]);
+    this._removeHook('onInitiallyLoaded');
+    this.fireHook('onLoaded', [this]);
     this.set('loading', false);
     this.loadEvent.fire(this);
   };
@@ -1818,7 +2114,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     }
     var hook = this._hooks.get(name);
     if (!hook) return;
-    hook.fire.apply (hook , args);
+    hook.fire.apply (hook, args);
   };
 
   BasicElement.prototype._removeHook = function (name) {
@@ -1869,7 +2165,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
 module.exports = createBasicElement;
 
-},{"./jobs":23}],19:[function(require,module,exports){
+},{"./jobs":31}],27:[function(require,module,exports){
 function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor, DescriptorHandler) {
   'use strict';
 
@@ -1909,7 +2205,7 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
 
 module.exports = createElements;
 
-},{"./basicelementcreator.js":18}],20:[function(require,module,exports){
+},{"./basicelementcreator.js":26}],28:[function(require,module,exports){
 function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler, mylib) {
   'use strict';
 
@@ -2072,7 +2368,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
 
 module.exports = createElementLoaderJob;
 
-},{}],21:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
   'use strict';
 
@@ -2150,7 +2446,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
 
 module.exports = createElementUnloaderJob;
 
-},{}],22:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   'use strict';
 
@@ -2265,7 +2561,7 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   mylib.LoadActualEnvironment = LoadActualEnvironmentJob;
 }
 module.exports = createEnvironmentFunctionality;
-},{}],23:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 function createElementJobs (lib, Resources, DescriptorHandler) {
   'use strict';
 
@@ -2282,8 +2578,8 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
 module.exports = createElementJobs;
 
-},{"./elementloadercreator":20,"./elementunloadercreator":21,"./environmentloadingcreator":22}],24:[function(require,module,exports){
-function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib) {
+},{"./elementloadercreator":28,"./elementunloadercreator":29,"./environmentloadingcreator":30}],32:[function(require,module,exports){
+function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib, arryopslib) {
   /**
    * Library that allows one to create an Application
    * @namespace allex_applib
@@ -2305,8 +2601,8 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
     Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, DescriptorHandler),
     datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
-    App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors),
-    descriptorApi = require('./descriptorapi')(lib);
+    descriptorApi = require('./descriptorapi')(lib, arryopslib),
+    App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors, descriptorApi, arryopslib);
 
   require('./preprocessors')(lib, preProcessingRegistryLib, descriptorApi);
   function createApp() {
@@ -2493,7 +2789,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
 
 module.exports = libCreator;
 
-},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":15,"./descriptorapi":16,"./descriptorhandlercreator":17,"./elements":19,"./misc":25,"./mixins":29,"./modifiers":32,"./preprocessingregistry":35,"./preprocessors":42,"./resources":43}],25:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":23,"./descriptorapi":24,"./descriptorhandlercreator":25,"./elements":27,"./misc":33,"./mixins":37,"./modifiers":40,"./preprocessingregistry":42,"./preprocessors":49,"./resources":50}],33:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -2636,7 +2932,7 @@ function createMisc (lib) {
 
 module.exports = createMisc;
 
-},{}],26:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 function createChildActualizerMixin (lib, mylib) {
   'use strict';
 
@@ -2724,7 +3020,7 @@ function createChildActualizerMixin (lib, mylib) {
 }
 module.exports = createChildActualizerMixin;
 
-},{}],27:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 function createChildrenStackMixin (lib, mylib) {
   'use strict';
 
@@ -2903,7 +3199,7 @@ function createChildrenStackMixin (lib, mylib) {
   mylib.ChildrenStack = ChildrenStackMixin;
 }
 module.exports = createChildrenStackMixin;
-},{}],28:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 function createFormMixin (lib, mylib) {
   'use strict';
 
@@ -3111,7 +3407,7 @@ function createFormMixin (lib, mylib) {
 }
 module.exports = createFormMixin;
 
-},{}],29:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 function createMixins (lib) {
   'use strict';
 
@@ -3127,7 +3423,7 @@ function createMixins (lib) {
 
 module.exports = createMixins;
 
-},{"./childactualizercreator":26,"./childrenstackcreator":27,"./formcreator":28,"./linksandlogicdestroyablecreator":30,"./neededconfigurationnamescreator":31}],30:[function(require,module,exports){
+},{"./childactualizercreator":34,"./childrenstackcreator":35,"./formcreator":36,"./linksandlogicdestroyablecreator":38,"./neededconfigurationnamescreator":39}],38:[function(require,module,exports){
 function createLinksAndLogicDestroyableMixin (lib, mylib) {
   'use strict';
 
@@ -3232,7 +3528,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
 
 module.exports = createLinksAndLogicDestroyableMixin;
 
-},{}],31:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 function createNeededConfigurationNamesMixin (lib, mylib) {
   'use strict';
 
@@ -3274,7 +3570,7 @@ function createNeededConfigurationNamesMixin (lib, mylib) {
 
 module.exports = createNeededConfigurationNamesMixin;
 
-},{}],32:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 function createModifiers (execlib, mixins, misc) {
   'use strict';
 
@@ -3474,337 +3770,7 @@ function createModifiers (execlib, mixins, misc) {
 
 module.exports = createModifiers;
 
-},{}],33:[function(require,module,exports){
-module.exports = function createArryOperations(extend, readPropertyFromDotDelimitedString, isFunction, Map, AllexJSONizingError) {
-  function union(a1, a2) {
-    var ret = a1.slice();
-    appendNonExistingItems(ret, a2);
-    return ret;
-  }
-
-  function appendNonExistingItems(a1, a2) {
-    a2.forEach(function (a2e) {
-      if (a1.indexOf(a2e)<0) {
-        a1.push(a2e);
-      }
-    });
-    a1 = null;
-  }
-
-  function finderwithindex(findobj, propname, propval, item, index){
-    try {
-      if (item[propname] === propval) {
-        findobj.element = item;
-        findobj.index = index;
-        return true;
-      }
-    } catch (ignore) {}
-  }
-
-  function finder(findobj, propname, propval, item){
-    var und;
-    //if (item[propname] === propval) {
-    if (propval !== und && readPropertyFromDotDelimitedString(item, propname) === propval) {
-      findobj.found = item;
-      return true;
-    }
-  }
-
-  function findElementWithProperty(a, propname, propval) {
-    if (!(a && a.some)) {
-      return;
-    }
-    var und, findobj = {found: und}, ret;
-    a.some(finder.bind(null, findobj, propname, propval));
-    ret = findobj.found;
-    findobj.found = null;
-    findobj = null;
-    return ret;
-  }
-
-  function lastfinder (propname, propval, result, item) {
-    var und;
-    if (propval !== und && readPropertyFromDotDelimitedString(item, propname) === propval) {
-      return item;
-    }
-    return result;
-  }
-
-  function findLastElementWithProperty(a, propname, propval) {
-    if (!(a && a.reduce)) {
-      return;
-    }
-    return a.reduce(lastfinder.bind(null, propname, propval), void 0);
-  }
-
-  function findElementAndIndexWithProperty(a, propname, propval) {
-    if (!(a && a.some)) {
-      return;
-    }
-    var und, findobj = {element: und, index: und};
-    a.some(finderwithindex.bind(null, findobj, propname, propval));
-    return findobj;
-  }
-
-  function findToMatchFilter (a, filter) {
-    var ret = [];
-    for (var i = 0; i < a.length; i++) {
-      if (filter.isOK(a[i])) ret.push (a[i]);
-    }
-    return ret;
-  }
-
-  function findFirstToMatchFilter (a, filter) {
-    for (var i = 0; i < a.length; i++) {
-      if (filter.isOK(a[i])) return a[i];
-    }
-  }
-
-  function findWithProperty (arr, propname, propval) {
-    return arr.filter (finder.bind(null, {}, propname, propval));
-  }
-
-  function checkerForPropertyName(propertyname, propertyprocessor, arry, object, index) {
-    if (!object.hasOwnProperty(propertyname)) {
-      throw(new AllexJSONizingError('NO_PROPERTY', object, 'No propertyname'));
-      return;
-    }
-    var prop = object[propertyname], existing;
-    if (propertyprocessor) {
-      prop = propertyprocessor(prop);
-    }
-    existing = findElementAndIndexWithProperty(arry, propertyname, prop);
-    if (existing.element) {
-      arry[existing.index] = extend(existing.element, object);
-    } else {
-      arry.push(object);
-    }
-  }
-
-  function appendNonExistingObjects(a1, a2, propertyname, propertyprocessor) {
-    a2.forEach(checkerForPropertyName.bind(null, propertyname, propertyprocessor, a1));
-  }
-
-  function unionObjects(a1, a2, propertyname, propertyprocessor) {
-    var ret = a1.slice();
-    appendNonExistingObjects(ret, a2, propertyname, propertyprocessor);
-    return ret;
-  }
-
-  function execute_eqf (what, eqf, item){
-    if (eqf(item, what)) {
-      return true;
-    }
-  }
-
-  function contains (arr, what, eqf) {
-    if (!isFunction (eqf)) {
-      return arr.indexOf(what) > -1;
-    }
-    return arr.some(execute_eqf.bind(null, what, eqf));
-  }
-
-  function notcontains (arr, what, eqf){
-    return !contains(arr, what, eqf);
-  }
-
-
-  function _filter_notcontains (arr, eqf, what){
-    return notcontains(arr, what, eqf);
-  };
-
-
-  function difference (arr1, arr2, eqf) {
-    return arr1.filter(_filter_notcontains.bind(null, arr2, eqf));
-  }
-
-  function isConsistent (arr1, arr2) { ///means arr2 has to have starting elements equal to elements of arr1
-    if (arr2.length < arr1.length) return false;
-    for (var i = 0 ; i < arr1.length; i++) {
-      if (arr2[i] !== arr1[i]) return false;
-    }
-    return true;
-  }
-
-  function _intersect_check (ret, arr2, eqf, item) {
-    if (notcontains(arr2, item, eqf)) { return; }
-    if (contains(ret, item, eqf)) { return; }
-    ret.push (item);
-  }
-
-  function intersect (arr1, arr2, eqf) {
-    if (!(arr1 && arr1.length)) return [];
-    if (!(arr2 && arr2.length)) return [];
-
-    var ret = [];
-    arr1.forEach(_intersect_check.bind(null, ret, arr2, eqf));
-    return ret;
-  }
-
-
-  function pivot (source, options) {
-    var p = new Pivoter(options);
-    return p.pivot(source);
-  }
-
-  function unpivot (source, options) {
-    var p = new Pivoter(options);
-    return p.unpivot(source);
-  }
-
-
-  /* options: 
-    x_field : this field is used for x axis ...
-    y_field : this field is used for y axis ...
-    value_field : this field is used for value ...
-    x_fields_list : list of fields accross x axis ...
-    init_empty_rows : should empty rows be inited,
-    to_y : converting function to y ...
-    from_y : convert back y value to original value ...
-    pivot_init_value : what should we put as initial value ...
-  */
-
-  function Pivoter (options) {
-    this.options = extend ({}, Pivoter.DEFAULT_OPTIONS, options);
-    if (!this.options.x_field) throw new Error('No x_field config');
-    if (!this.options.y_field) throw new Error('No y_field config');
-    if (!this.options.value_field) throw new Error('No value_field config');
-    if (!this.options.x_fields_list) throw new Error('No x_fields_list config');
-  }
-
-  Pivoter.prototype.pivot = function (source) {
-    var ret = [];
-    source.forEach (this._processPivotSourceItem.bind(this, ret));
-
-    if (!this.options.init_empty_rows) return ret;
-    for (var i = 0; i < ret.length; i++) {
-      if (ret[i]) continue;
-      ret[i] = this.initializeEmptyPivotRecord();
-    }
-    return ret;
-  };
-
-  Pivoter.prototype._processPivotSourceItem = function (ret, item) {
-    var y = this.options.to_y(item[this.options.y_field], item);
-
-    if (!ret[y]) {
-      ret[y] = this.initializeEmptyPivotRecord();
-    }
-
-    var x = item[this.options.x_field];
-    if (!(x in ret[y])) throw new Error(x+' is not in filed list ...');
-    //console.log('PROCESSING PIVOT SOURCE ITEM', y, ret[y], item);
-    ret[y][x] = item[this.options.value_field];
-  };
-
-  Pivoter.prototype.initializeEmptyPivotRecord = function () {
-    var ret = {};
-    this.options.x_fields_list.forEach (this._createEmptyPivotField.bind(this, ret));
-    return ret;
-  };
-
-  Pivoter.prototype._createEmptyPivotField = function (ret, name) {
-    return ret[name] = 'pivot_init_value' in this.options ? this.options.pivot_init_value : null;
-  };
-
-  Pivoter.prototype.unpivot = function (source, removeNonExistingValueFromUnpivot) {
-    var ret = [];
-    source.forEach (this._processPivotedItem.bind(this, removeNonExistingValueFromUnpivot, ret));
-    return ret;
-  };
-
-  Pivoter.prototype._processPivotedItem = function (removeNonExistingValueFromUnpivot, ret, item, index) {
-    this.options.x_fields_list.forEach (this._fromPivoted.bind(this, removeNonExistingValueFromUnpivot, ret, index, item));
-  };
-
-  Pivoter.prototype._fromPivoted = function (removeNonExistingValueFromUnpivot, ret, y, item, field){
-    var o = {};
-    o[this.options.value_field] = item[field];
-    o[this.options.y_field] = this.options.from_y(y, item);
-    o[this.options.x_field] = field;
-    if (this._shouldAccountUnpivot(o, removeNonExistingValueFromUnpivot)) {
-      ret.push (this._processUnpivotRecord(o));
-    }
-  };
-
-  Pivoter.prototype._shouldAccountUnpivot = function (o, removeNonExistingValueFromUnpivot) {
-    if (removeNonExistingValueFromUnpivot) {
-      if (o[this.options.value_field] === this.options.nonexisting_value) {
-        return false;
-      }
-    }
-    var f = this.options.shouldAccountUnpivot;
-
-    return isFunction(f) ? f(o) : true;
-  };
-
-  Pivoter.prototype._processUnpivotRecord = function (rec) {
-    var f = this.options.processUnpivotRecord;
-    return isFunction(f) ? f(rec) : rec;
-  };
-
-  Pivoter.DEFAULT_OPTIONS = {
-    nonexisting_value : null,
-    init_empty_rows : false,
-    to_y: function (s) {return parseInt(s);},
-    from_y : function (s) {return s+'';}
-  };
-
-  function toRet (ret, val, name) {
-    ret.push (name);
-  }
-
-  function unique (arr) {
-    var map = new Map ();
-    for (var i = 0; i < arr.length; i++) {
-      if (!map.get(arr[i])) map.add(arr[i], true);
-    }
-
-    var ret = [];
-    map.traverse (toRet.bind(null, ret));
-    return ret;
-  }
-
-	function randomizeArray(array) {
-    var length = array.length;
-    var last = length - 1;
-
-    for (var index = 0; index < length; index++) {
-      var rand = Math.floor ((index+1)*Math.random());
-      var temp = array[index];
-      array[index] = array[rand];
-      array[rand] = temp;
-    }
-    return array;
-	}
-
-
-  var ret = {
-    intersect : intersect,
-    isConsistent : isConsistent,
-    contains : contains,
-    notcontains : notcontains,
-    difference : difference,
-    union: union,
-    appendNonExistingItems: appendNonExistingItems,
-    findElementWithProperty: findElementWithProperty,
-    findLastElementWithProperty: findLastElementWithProperty,
-    findElementAndIndexWithProperty: findElementAndIndexWithProperty,
-    pivot : pivot,
-    unpivot : unpivot,
-    Pivoter : Pivoter,
-    findToMatchFilter : findToMatchFilter,
-    findFirstToMatchFilter : findFirstToMatchFilter,
-    unique : unique,
-    randomizeArray : randomizeArray,
-    findWithProperty : findWithProperty,
-    appendNonExistingObjects: appendNonExistingObjects,
-    unionObjects: unionObjects
-  };
-  return ret;
-}; 
-
-},{}],34:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
@@ -4051,7 +4017,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
 
 module.exports = createPreProcessingRegistry;
 
-},{}],35:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 function createPreProcessingRegistries (lib, mixins) {
   'use strict';
 
@@ -4069,7 +4035,7 @@ function createPreProcessingRegistries (lib, mixins) {
 
 module.exports = createPreProcessingRegistries;
 
-},{"./basecreator":34,"./prepreprocessingregistrycreator":36,"./preprocessingregistrycreator.js":37}],36:[function(require,module,exports){
+},{"./basecreator":41,"./prepreprocessingregistrycreator":43,"./preprocessingregistrycreator.js":44}],43:[function(require,module,exports){
 function createPrePreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -4111,7 +4077,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPrePreProcessor;
 
-},{}],37:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 function createPreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -4144,7 +4110,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPreProcessor;
 
-},{}],38:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4178,7 +4144,7 @@ function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHe
 
 module.exports = createCommandPreprocessor;
 
-},{}],39:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4212,7 +4178,7 @@ function createDataCommandPreprocessor (lib, preprocessingregistrylib, Environme
 
 module.exports = createDataCommandPreprocessor;
 
-},{}],40:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4252,7 +4218,7 @@ function createDataSourcePreprocessor (lib, preprocessingregistrylib, Environmen
 
 module.exports = createDataSourcePreprocessor;
 
-},{}],41:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4362,7 +4328,7 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
 
 module.exports = createEnvironmentHelperPreprocessor;
 
-},{}],42:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4376,7 +4342,7 @@ function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
 
 module.exports = createPreProcessors;
 
-},{"./commandcreator":38,"./datacommandcreator":39,"./datasourcecreator":40,"./environmenthelpercreator":41}],43:[function(require,module,exports){
+},{"./commandcreator":45,"./datacommandcreator":46,"./datasourcecreator":47,"./environmenthelpercreator":48}],50:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),
@@ -4498,4 +4464,4 @@ function createResourcesModule (lib) {
 
 module.exports = createResourcesModule;
 
-},{}]},{},[10]);
+},{}]},{},[18]);
