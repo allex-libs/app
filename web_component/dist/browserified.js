@@ -449,7 +449,7 @@ function createDataSource (lib, dataSuite) {
     return false;
   };
   function valsetter (val, subsource, subsourcename) {
-    subsource.set('data', val[subsourcename]);
+    subsource.set('data', val ? val[subsourcename] : null);
   }
 
   AppSideDataSource.prototype.set_environment = function (val) {
