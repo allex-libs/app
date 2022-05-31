@@ -1,6 +1,8 @@
 function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
   'use strict';
 
+  var q = lib.q;
+
   function FromDataCreatorMixin () {
     if (!lib.isFunction(this.super_set_data)) {
       throw new lib.Error('FROMDATACREATORMIXIN_NOT_APPLICABLE', this.constructor.name+' must have the super_set_data method, that calls set_data on the super class');
@@ -144,6 +146,29 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
   FromDataCreatorMixin.prototype.actualizeSubElementsWithFilter = function (filterdesc) {
     this.traverseSubElementsWithFilter(filterdesc, function (chld, isok) {chld.set('actual', isok);});
   };
+  FromDataCreatorMixin.prototype.allSubElementsActual = function () {
+    if (!lib.isArray(this.subElements)) {
+      return q(0);
+    }
+    return q.all(this.subElements.map(actualWaiter));
+  };
+  function actualWaiter (elem) {
+    var listenerobj, ret;
+    if (elem.get('actual')) {
+      return q([]);
+    }
+    listenerobj = {listener: null, defer: q.defer()};
+    ret = listenerobj.defer.promise;
+    listenerobj.listener = elem.attachListener('changed', 'actual', onActualized.bind(null, listenerobj));
+    listenerobj = null;
+    return ret;
+  }
+  function onActualized (listenerobj, act) {
+    if (act) {
+      listenerobj.listener.destroy();
+      listenerobj.defer.resolve(true);
+    }
+  }
 
   FromDataCreatorMixin.addMethods = function (klass) {
     lib.inheritMethods(klass, FromDataCreatorMixin
@@ -158,6 +183,7 @@ function createFromDataCreatorMixin (lib, elements, datafilterslib, mylib) {
       ,'filterSubElements'
       ,'traverseSubElementsWithFilter'
       ,'actualizeSubElementsWithFilter'
+      ,'allSubElementsActual'
       ,'_purgeSubElements'
     );
   };
