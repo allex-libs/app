@@ -81,8 +81,13 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
       return;
     }
     if (thingy.length!=2) {
+      thingy.forEach(destroyLinkOrLogic.bind(null, name));
+      name = null;
+      return;
+      /*
       console.error('what is', name, '?', thingy);
       return;
+      */
     }
     first = thingy[0];
     second = thingy[1];

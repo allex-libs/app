@@ -125,12 +125,19 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     if (lib.isArray(subelements)) {
       subelements.forEach(this.createElement.bind(this));
     }
+    this.jobs.run('.', new jobs.LoadInitialEnvironment(this));
+    this.jobs.run('.', new jobs.LoadStaticEnvironment(this)).then(
+      this.fireInitializationDone.bind(this),
+      this.destroy.bind(this)
+    );
+    /*
     (new jobs.LoadInitialEnvironment(this)).go().then(
       (new jobs.LoadStaticEnvironment(this)).go().then(
         this.fireInitializationDone.bind(this),
         this.destroy.bind(this)
       )
     );
+    */
   };
 
   function handleLoading (be, newactual) {
