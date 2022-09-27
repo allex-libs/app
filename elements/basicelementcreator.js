@@ -1,4 +1,4 @@
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler, descriptorapi) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -14,7 +14,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, Resources, DescriptorHandler),
+    jobs = require('./jobs')(lib, Resources, DescriptorHandler, descriptorapi),
+    jobcores = require('./jobcores')(lib, Resources, DescriptorHandler, Linker, jobs),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 
@@ -117,28 +118,19 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   lib.inheritMethods (BasicElement, Gettable, 'get');
   Configurable.addMethods(BasicElement);
 
-  BasicElement.prototype.initialize = function () {
+  BasicElement.prototype.initializeFrom = function (desc) {
     var subelements;
     preInitialize(this);
     this.actual = this.getConfigVal('actual') || false;
-    subelements = this.getConfigVal('elements');
-    if (lib.isArray(subelements)) {
-      subelements.forEach(this.createElement.bind(this));
-    }
-    this.jobs.run('.', new jobs.LoadInitialEnvironment(this));
-    this.jobs.run('.', new jobs.LoadStaticEnvironment(this)).then(
-      this.fireInitializationDone.bind(this),
-      this.destroy.bind(this)
-    );
-    /*
-    (new jobs.LoadInitialEnvironment(this)).go().then(
-      (new jobs.LoadStaticEnvironment(this)).go().then(
-        this.fireInitializationDone.bind(this),
-        this.destroy.bind(this)
-      )
-    );
-    */
+    this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+      new jobcores.Initializer(this, desc)
+    )).then(null, onInitializeFailed.bind(this));
   };
+
+  function onInitializeFailed (reason) {
+    console.error(this.id, 'failed to initialize', reason);
+    this.destroy(reason);
+  }
 
   function handleLoading (be, newactual) {
     be[newactual ? 'load' : 'unload']();
@@ -177,6 +169,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
+    this.unbufferAllBufferableHookCollections();
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
@@ -240,7 +233,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
 
-  //BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   function splitAtDot (str) {
     var dotpos = str.indexOf('.');
     if (dotpos>=0) {
@@ -299,55 +291,26 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.createElement = function (desc, after_ctor) {
     try {
-    PrePreProcessor.process(desc);
-    PreProcessor.process(desc);
-    executeModifiers (true, desc);
-    var el = elementFactory(desc);
-    el.bufferAllBufferableHookCollections();
-    after_ctor(el);
-    el.resourcedescs = desc ? (desc.resources||[]) : [];
-    el.resourcereqs = desc ? (desc.requires||[]) : [];
-    //prepareResources(el, desc.requires);
-    if ('actual' in desc) {
-      console.error(desc);
-      throw new Error('actual has to be in "options"');
-    }
-    el.initialize();
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links).then(el.setLinks.bind(el));
-    el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
-    return el;
+      PrePreProcessor.process(desc);
+      PreProcessor.process(desc);
+      executeModifiers (true, desc);
+      var el = elementFactory(desc);
+      el.bufferAllBufferableHookCollections();
+      after_ctor(el);
+      el.resourcedescs = desc ? (desc.resources||[]) : [];
+      el.resourcereqs = desc ? (desc.requires||[]) : [];
+      if ('actual' in desc) {
+        console.error(desc);
+        throw new Error('actual has to be in "options"');
+      }
+      el.initializeFrom(desc);
+      return el;
     } catch (e) {
       console.error('Could not create element from desc', desc);
       console.error(e);
       throw e;
     }
   }
-
-  /*
-  function prepareResources (el, requires) {
-    if (!requires || !requires.length || !lib.isArray(requires)) return;
-    requires.forEach (prepareResource.bind(null, el));
-  };
-  */
-
-  /*
-  function prepareResource (el, resource) {
-    if (!el.resourcereqs) {
-      el.resourcereqs = new lib.Map();
-    }
-    var resid, resalias;
-    if (lib.isString(resource)) {
-      resid = resource;
-      resalias = resource;
-    }else{
-      resid = resource.resource;
-      resalias = resource.alias;
-    }
-    el.resourcereqs.replace(resalias, Resources.getResource(resid));
-  }
-  */
-
 
   BasicElement.prototype._addHook = function (name) {
     this._hooks.add (name, new lib.HookCollection());

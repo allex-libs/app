@@ -39,7 +39,7 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
       this.onItem(prevres);
     }
     if (!lib.isArray(arry)) {
-      return true;
+      return [];
     }
     this.index ++;
     if (this.index >= arry.length) {

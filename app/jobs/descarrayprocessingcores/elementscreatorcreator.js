@@ -14,7 +14,7 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     DescriptorArrayJobCore.prototype.destroy.call(this);
   };
   ElementsCreatorJobCore.prototype.doOneItem = function (elemdesc) {
-    var elem, hook, d, ret;
+    var elem, d, ret;
     d = q.defer();
     ret = d.promise;
     elemdesc.options = elemdesc.options || {};

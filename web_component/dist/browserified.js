@@ -661,7 +661,7 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
       this.onItem(prevres);
     }
     if (!lib.isArray(arry)) {
-      return true;
+      return [];
     }
     this.index ++;
     if (this.index >= arry.length) {
@@ -815,7 +815,7 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     DescriptorArrayJobCore.prototype.destroy.call(this);
   };
   ElementsCreatorJobCore.prototype.doOneItem = function (elemdesc) {
-    var elem, hook, d, ret;
+    var elem, d, ret;
     d = q.defer();
     ret = d.promise;
     elemdesc.options = elemdesc.options || {};
@@ -1039,6 +1039,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     ).go();
   };
   DescriptorLoaderJobCore.prototype.onCreateElements = function (elems) {
+    var a = elems;
     /*
     if (lib.isArray(elems)) {
       elems.forEach(this.addElement.bind(this));
@@ -1186,7 +1187,7 @@ ALLEX.execSuite.libRegistry.register('allex_applib',require('./libindex')(
 ));
 ALLEX.WEB_COMPONENTS.allex_applib = ALLEX.execSuite.libRegistry.get('allex_applib');
 
-},{"./libindex":32}],19:[function(require,module,exports){
+},{"./libindex":36}],19:[function(require,module,exports){
 function createDataElementMixin (lib, mylib) {
   'use strict';
 
@@ -1760,7 +1761,7 @@ function createDescriptorHandler (lib, mixins, ourlib) {
 module.exports = createDescriptorHandler;
 
 },{}],26:[function(require,module,exports){
-function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler) {
+function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker, Resources, executeModifiers, LinksAndLogicDestroyableMixin, PrePreProcessor, PreProcessor, DescriptorHandler, descriptorapi) {
   /*
     possible config params : 
       onInitialized : array of functions or function to be fired upon init
@@ -1776,7 +1777,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     Configurable = lib.Configurable,
     q = lib.q,
     qlib = lib.qlib,
-    jobs = require('./jobs')(lib, Resources, DescriptorHandler),
+    jobs = require('./jobs')(lib, Resources, DescriptorHandler, descriptorapi),
+    jobcores = require('./jobcores')(lib, Resources, DescriptorHandler, Linker, jobs),
     ElementLoaderJob = jobs.ElementLoaderJob,
     ElementUnloaderJob = jobs.ElementUnloaderJob;
 
@@ -1879,28 +1881,19 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   lib.inheritMethods (BasicElement, Gettable, 'get');
   Configurable.addMethods(BasicElement);
 
-  BasicElement.prototype.initialize = function () {
+  BasicElement.prototype.initializeFrom = function (desc) {
     var subelements;
     preInitialize(this);
     this.actual = this.getConfigVal('actual') || false;
-    subelements = this.getConfigVal('elements');
-    if (lib.isArray(subelements)) {
-      subelements.forEach(this.createElement.bind(this));
-    }
-    this.jobs.run('.', new jobs.LoadInitialEnvironment(this));
-    this.jobs.run('.', new jobs.LoadStaticEnvironment(this)).then(
-      this.fireInitializationDone.bind(this),
-      this.destroy.bind(this)
-    );
-    /*
-    (new jobs.LoadInitialEnvironment(this)).go().then(
-      (new jobs.LoadStaticEnvironment(this)).go().then(
-        this.fireInitializationDone.bind(this),
-        this.destroy.bind(this)
-      )
-    );
-    */
+    this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+      new jobcores.Initializer(this, desc)
+    )).then(null, onInitializeFailed.bind(this));
   };
+
+  function onInitializeFailed (reason) {
+    console.error(this.id, 'failed to initialize', reason);
+    this.destroy(reason);
+  }
 
   function handleLoading (be, newactual) {
     be[newactual ? 'load' : 'unload']();
@@ -1939,6 +1932,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
+    this.unbufferAllBufferableHookCollections();
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
@@ -2002,7 +1996,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     return this.__parent ? this.__parent.childChanged(el, name, value) : undefined;
   };
 
-  //BasicElement.prototype.getElement = function () { throw new Error('Not implemented'); }
   function splitAtDot (str) {
     var dotpos = str.indexOf('.');
     if (dotpos>=0) {
@@ -2061,55 +2054,26 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.createElement = function (desc, after_ctor) {
     try {
-    PrePreProcessor.process(desc);
-    PreProcessor.process(desc);
-    executeModifiers (true, desc);
-    var el = elementFactory(desc);
-    el.bufferAllBufferableHookCollections();
-    after_ctor(el);
-    el.resourcedescs = desc ? (desc.resources||[]) : [];
-    el.resourcereqs = desc ? (desc.requires||[]) : [];
-    //prepareResources(el, desc.requires);
-    if ('actual' in desc) {
-      console.error(desc);
-      throw new Error('actual has to be in "options"');
-    }
-    el.initialize();
-    el._link = new Linker.LinkingEnvironment(el);
-    el._link.produceLinks(desc.links).then(el.setLinks.bind(el));
-    el._link.produceLogic(desc.logic).then(el.setLogic.bind(el));
-    return el;
+      PrePreProcessor.process(desc);
+      PreProcessor.process(desc);
+      executeModifiers (true, desc);
+      var el = elementFactory(desc);
+      el.bufferAllBufferableHookCollections();
+      after_ctor(el);
+      el.resourcedescs = desc ? (desc.resources||[]) : [];
+      el.resourcereqs = desc ? (desc.requires||[]) : [];
+      if ('actual' in desc) {
+        console.error(desc);
+        throw new Error('actual has to be in "options"');
+      }
+      el.initializeFrom(desc);
+      return el;
     } catch (e) {
       console.error('Could not create element from desc', desc);
       console.error(e);
       throw e;
     }
   }
-
-  /*
-  function prepareResources (el, requires) {
-    if (!requires || !requires.length || !lib.isArray(requires)) return;
-    requires.forEach (prepareResource.bind(null, el));
-  };
-  */
-
-  /*
-  function prepareResource (el, resource) {
-    if (!el.resourcereqs) {
-      el.resourcereqs = new lib.Map();
-    }
-    var resid, resalias;
-    if (lib.isString(resource)) {
-      resid = resource;
-      resalias = resource;
-    }else{
-      resid = resource.resource;
-      resalias = resource.alias;
-    }
-    el.resourcereqs.replace(resalias, Resources.getResource(resid));
-  }
-  */
-
 
   BasicElement.prototype._addHook = function (name) {
     this._hooks.add (name, new lib.HookCollection());
@@ -2198,7 +2162,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
 module.exports = createBasicElement;
 
-},{"./jobs":31}],27:[function(require,module,exports){
+},{"./jobcores":30,"./jobs":35}],27:[function(require,module,exports){
 function createElements (lib, Hierarchy, BasicParent, Linker, Resources, executeModifiers, mixins, PrePreProcessor, PreProcessor, DescriptorHandler) {
   'use strict';
 
@@ -2239,6 +2203,150 @@ function createElements (lib, Hierarchy, BasicParent, Linker, Resources, execute
 module.exports = createElements;
 
 },{"./basicelementcreator.js":26}],28:[function(require,module,exports){
+function createBaseBasicElementJobCore (lib, mylib) {
+  'use strict';
+  function BaseBasicElementJobCore (element) {
+    this.element = element;
+  }
+  BaseBasicElementJobCore.prototype.destroy = function () {
+    this.element = null;
+  };
+  BaseBasicElementJobCore.prototype.shouldContinue = function () {
+    if (!this.element) {
+      return new lib.Error('NO_ELEMENT', this.constructor.name+' cannot proceed without an Element');
+    }
+    if (!this.element.destroyed) {
+      return new lib.Error('ELEMENT_ALREADY_DESTROYED', this.constructor.name+' cannot proceed, the Element is already destroyed');
+    }
+  };
+
+  mylib.Base = BaseBasicElementJobCore;
+}
+module.exports = createBaseBasicElementJobCore;
+},{}],29:[function(require,module,exports){
+function createElementsLoaderJobCore (lib, DescriptorHandler, mylib) {
+  'use strict';
+
+  var Base = mylib.Base;
+
+  function ELementsLoaderJobCore (element) {
+    Base.call(this, element);
+  }
+  lib.inherit(ELementsLoaderJobCore, Base);
+  ELementsLoaderJobCore.prototype.destroy = function () {
+    Base.prototype.destroy.call(this);
+  };
+
+  ELementsLoaderJobCore.prototype.doLoad = function () {
+    var subelems = this.element.getConfigVal('elements');
+    var fullname, envdesc;
+    if (!lib.isArray(subelems)) {
+      return [];
+    }
+    fullname = this.element.myNameOnMasterEnvironment();
+    envdesc = new DescriptorHandler({
+      elements: subelems.map(namenormalizer.bind(null, fullname))
+    });
+    fullname = null;
+    return envdesc.load();
+  };
+  ELementsLoaderJobCore.prototype.finalize = function (res) {
+    return res;
+  };
+
+  ELementsLoaderJobCore.prototype.steps = [
+    'doLoad',
+    'finalize'
+  ];
+
+  function namenormalizer (fullname, desc) {
+    var ret = lib.pickExcept(desc, ['name']);
+    ret.name = fullname+'.'+desc.name;
+    return ret;
+  }
+
+  mylib.ElementsLoader = ELementsLoaderJobCore;
+}
+module.exports = createElementsLoaderJobCore;
+},{}],30:[function(require,module,exports){
+function createBasicElementJobCores(lib, Resources, DescriptorHandler, Linker, jobs) {
+  'use strict';
+  var mylib = {};
+
+  require('./basecreator')(lib, mylib);
+  require('./elementsloadercreator')(lib, DescriptorHandler, mylib);
+  require('./initializercreator')(lib, DescriptorHandler, Linker, jobs, mylib);
+
+  return mylib;
+}
+module.exports = createBasicElementJobCores;
+},{"./basecreator":28,"./elementsloadercreator":29,"./initializercreator":31}],31:[function(require,module,exports){
+function createBasicElementInitializer (lib, DescriptorHandler, Linker, jobs, mylib) {
+  'use strict';
+  var Base = mylib.Base;
+  var qlib = lib.qlib;
+
+  function BasicElementInitializerJobCore (element, desc) {
+    Base.call(this, element);
+    this.descriptor = desc;
+  }
+  lib.inherit(BasicElementInitializerJobCore, Base);
+  BasicElementInitializerJobCore.prototype.destroy = function () {
+    this.descriptor = null;
+  };
+
+  BasicElementInitializerJobCore.prototype.loadElements = function () {
+    return qlib.newSteppedJobOnSteppedInstance(
+      new mylib.ElementsLoader(this.element)
+    ).go();
+  };
+  BasicElementInitializerJobCore.prototype.loadInitialEnvironment = function () {
+    return (new jobs.LoadInitialEnvironment(this.element)).go();
+  };
+  BasicElementInitializerJobCore.prototype.loadStaticEnvironment = function () {
+    return (new jobs.LoadStaticEnvironment(this.element)).go();
+  };
+  BasicElementInitializerJobCore.prototype.produceLinks = function () {
+    this.element._link = new Linker.LinkingEnvironment(this.element);
+    return (this.descriptor && lib.isArray(this.descriptor.links))
+    ?
+    this.element._link.produceLinks(this.descriptor.links)
+    :
+    null;
+  };
+  BasicElementInitializerJobCore.prototype.onLinks = function (links) {
+    this.element.setLinks(links);
+  };
+  BasicElementInitializerJobCore.prototype.produceLogic = function () {
+    return (this.descriptor && lib.isArray(this.descriptor.logic))
+    ?
+    this.element._link.produceLogic(this.descriptor.logic)
+    :
+    null;
+  };
+  BasicElementInitializerJobCore.prototype.onLogic = function (logic) {
+    this.element.setLogic(logic);
+  };
+  BasicElementInitializerJobCore.prototype.finalize = function () {
+    this.element.fireInitializationDone();
+  };
+
+
+  BasicElementInitializerJobCore.prototype.steps = [
+    'loadElements',
+    'loadInitialEnvironment',
+    'loadStaticEnvironment',
+    'produceLinks',
+    'onLinks',
+    'produceLogic',
+    'onLogic',
+    'finalize'
+  ];
+
+  mylib.Initializer = BasicElementInitializerJobCore;
+}
+module.exports = createBasicElementInitializer;
+},{}],32:[function(require,module,exports){
 function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHandler, mylib) {
   'use strict';
 
@@ -2401,7 +2509,7 @@ function createElementLoaderJob (lib, JobOnDestroyable, Resources, DescriptorHan
 
 module.exports = createElementLoaderJob;
 
-},{}],29:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
   'use strict';
 
@@ -2479,7 +2587,7 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
 
 module.exports = createElementUnloaderJob;
 
-},{}],30:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   'use strict';
 
@@ -2594,7 +2702,7 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   mylib.LoadActualEnvironment = LoadActualEnvironmentJob;
 }
 module.exports = createEnvironmentFunctionality;
-},{}],31:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 function createElementJobs (lib, Resources, DescriptorHandler) {
   'use strict';
 
@@ -2611,7 +2719,7 @@ function createElementJobs (lib, Resources, DescriptorHandler) {
 
 module.exports = createElementJobs;
 
-},{"./elementloadercreator":28,"./elementunloadercreator":29,"./environmentloadingcreator":30}],32:[function(require,module,exports){
+},{"./elementloadercreator":32,"./elementunloadercreator":33,"./environmentloadingcreator":34}],36:[function(require,module,exports){
 function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableeventlib, datafilterslib, arryopslib) {
   /**
    * Library that allows one to create an Application
@@ -2632,9 +2740,9 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     preProcessingRegistryLib = require('./preprocessingregistry')(lib, mixins),
     PreProcessors = preProcessingRegistryLib.PreProcessors,
     PrePreProcessors = preProcessingRegistryLib.PrePreProcessors,
-    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, DescriptorHandler),
-    datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     descriptorApi = require('./descriptorapi')(lib, arryopslib),
+    Elements = require('./elements')(lib, Hierarchy, BasicParent, Linker, Resources, Modifier.executeModifiers, mixins, PrePreProcessors, PreProcessors, DescriptorHandler, descriptorApi),
+    datamixins_ignored = require('./datamixins')(lib, Elements, datafilterslib, mixins),
     App = require('./app')(lib, execlib.dataSuite, Elements, Hierarchy, Resources, BasicParent, environmentlib, Linker, Elements.BasicElement, Modifier.executeModifiers, PrePreProcessors, PreProcessors, descriptorApi, arryopslib);
 
   require('./preprocessors')(lib, preProcessingRegistryLib, descriptorApi);
@@ -2822,7 +2930,7 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
 
 module.exports = libCreator;
 
-},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":23,"./descriptorapi":24,"./descriptorhandlercreator":25,"./elements":27,"./misc":33,"./mixins":37,"./modifiers":40,"./preprocessingregistry":42,"./preprocessors":49,"./resources":50}],33:[function(require,module,exports){
+},{"./abstractions/basicparentcreator":1,"./app":6,"./datamixins":23,"./descriptorapi":24,"./descriptorhandlercreator":25,"./elements":27,"./misc":37,"./mixins":41,"./modifiers":44,"./preprocessingregistry":46,"./preprocessors":53,"./resources":54}],37:[function(require,module,exports){
 function createMisc (lib) {
   function initLinks (desc) {
     if (!desc) throw new Error('How do you think to do this with no descriptor?');
@@ -2965,7 +3073,7 @@ function createMisc (lib) {
 
 module.exports = createMisc;
 
-},{}],34:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 function createChildActualizerMixin (lib, mylib) {
   'use strict';
 
@@ -3053,7 +3161,7 @@ function createChildActualizerMixin (lib, mylib) {
 }
 module.exports = createChildActualizerMixin;
 
-},{}],35:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 function createChildrenStackMixin (lib, mylib) {
   'use strict';
 
@@ -3232,7 +3340,7 @@ function createChildrenStackMixin (lib, mylib) {
   mylib.ChildrenStack = ChildrenStackMixin;
 }
 module.exports = createChildrenStackMixin;
-},{}],36:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 function createFormMixin (lib, mylib) {
   'use strict';
 
@@ -3440,7 +3548,7 @@ function createFormMixin (lib, mylib) {
 }
 module.exports = createFormMixin;
 
-},{}],37:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 function createMixins (lib) {
   'use strict';
 
@@ -3456,7 +3564,7 @@ function createMixins (lib) {
 
 module.exports = createMixins;
 
-},{"./childactualizercreator":34,"./childrenstackcreator":35,"./formcreator":36,"./linksandlogicdestroyablecreator":38,"./neededconfigurationnamescreator":39}],38:[function(require,module,exports){
+},{"./childactualizercreator":38,"./childrenstackcreator":39,"./formcreator":40,"./linksandlogicdestroyablecreator":42,"./neededconfigurationnamescreator":43}],42:[function(require,module,exports){
 function createLinksAndLogicDestroyableMixin (lib, mylib) {
   'use strict';
 
@@ -3566,7 +3674,7 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
 
 module.exports = createLinksAndLogicDestroyableMixin;
 
-},{}],39:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 function createNeededConfigurationNamesMixin (lib, mylib) {
   'use strict';
 
@@ -3608,7 +3716,7 @@ function createNeededConfigurationNamesMixin (lib, mylib) {
 
 module.exports = createNeededConfigurationNamesMixin;
 
-},{}],40:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 function createModifiers (execlib, mixins, misc) {
   'use strict';
 
@@ -3808,7 +3916,7 @@ function createModifiers (execlib, mixins, misc) {
 
 module.exports = createModifiers;
 
-},{}],41:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
   'use strict';
 
@@ -4055,7 +4163,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
 
 module.exports = createPreProcessingRegistry;
 
-},{}],42:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 function createPreProcessingRegistries (lib, mixins) {
   'use strict';
 
@@ -4073,7 +4181,7 @@ function createPreProcessingRegistries (lib, mixins) {
 
 module.exports = createPreProcessingRegistries;
 
-},{"./basecreator":41,"./prepreprocessingregistrycreator":43,"./preprocessingregistrycreator.js":44}],43:[function(require,module,exports){
+},{"./basecreator":45,"./prepreprocessingregistrycreator":47,"./preprocessingregistrycreator.js":48}],47:[function(require,module,exports){
 function createPrePreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -4115,7 +4223,7 @@ function createPrePreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPrePreProcessor;
 
-},{}],44:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 function createPreProcessor (lib, PreProcessingRegistryBase) {
   'use strict';
 
@@ -4148,7 +4256,7 @@ function createPreProcessor (lib, PreProcessingRegistryBase) {
 }
 module.exports = createPreProcessor;
 
-},{}],45:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4182,7 +4290,7 @@ function createCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHe
 
 module.exports = createCommandPreprocessor;
 
-},{}],46:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 function createDataCommandPreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4216,7 +4324,7 @@ function createDataCommandPreprocessor (lib, preprocessingregistrylib, Environme
 
 module.exports = createDataCommandPreprocessor;
 
-},{}],47:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 function createDataSourcePreprocessor (lib, preprocessingregistrylib, EnvironmentHelperPreprocessor) {
   'use strict';
 
@@ -4256,7 +4364,7 @@ function createDataSourcePreprocessor (lib, preprocessingregistrylib, Environmen
 
 module.exports = createDataSourcePreprocessor;
 
-},{}],48:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4366,7 +4474,7 @@ function createEnvironmentHelperPreprocessor (lib, preprocessingregistrylib, des
 
 module.exports = createEnvironmentHelperPreprocessor;
 
-},{}],49:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
   'use strict';
 
@@ -4380,7 +4488,7 @@ function createPreProcessors (lib, preprocessingregistrylib, descriptorApi) {
 
 module.exports = createPreProcessors;
 
-},{"./commandcreator":45,"./datacommandcreator":46,"./datasourcecreator":47,"./environmenthelpercreator":48}],50:[function(require,module,exports){
+},{"./commandcreator":49,"./datacommandcreator":50,"./datasourcecreator":51,"./environmenthelpercreator":52}],54:[function(require,module,exports){
 function createResourcesModule (lib) {
   var q = lib.q,
     ResourceTypeRegistry = new lib.Map (),

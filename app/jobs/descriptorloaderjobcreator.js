@@ -98,6 +98,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     ).go();
   };
   DescriptorLoaderJobCore.prototype.onCreateElements = function (elems) {
+    var a = elems;
     /*
     if (lib.isArray(elems)) {
       elems.forEach(this.addElement.bind(this));
