@@ -232,7 +232,7 @@ function createPreProcessingRegistry (lib, NeededConfigurationNamesMixin) {
       return;
     }
     preprocessor.configure(config);
-    preprocessor.process(desc);
+    return preprocessor.process(desc);
   }
 
   return {

@@ -197,10 +197,10 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
   RESULT.bootstrap = bootstrap;
 
   RESULT.BasicProcessor.prototype.firePreprocessor = function (name, config, desc) {
-    preProcessingRegistryLib._doProcess(PreProcessors, desc, config, name);
+    return preProcessingRegistryLib._doProcess(PreProcessors, desc, config, name);
   };
   RESULT.BasicProcessor.prototype.firePrePreprocessor = function (name, config, desc) {
-    preProcessingRegistryLib._doProcess(PrePreProcessors, desc, config, name);
+    return preProcessingRegistryLib._doProcess(PrePreProcessors, desc, config, name);
   };
 
   return RESULT;
