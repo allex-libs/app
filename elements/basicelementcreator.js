@@ -169,7 +169,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
-    this.unbufferAllBufferableHookCollections();
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
