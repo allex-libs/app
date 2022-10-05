@@ -1,7 +1,8 @@
 function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   'use strict';
 
-  var q = lib.q;
+  var q = lib.q,
+    qlib = lib.qlib;
 
   function DescriptorArrayJobCore (descriptorloaderjobcore, arrayname) {
     this.descriptorLoaderJobCore = descriptorloaderjobcore;
@@ -35,11 +36,14 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   };
   DescriptorArrayJobCore.prototype.stepOne = function (prevres) {
     var arry = this.array(), oneres;
-    if (this.index >= 0) {
-      this.onItem(prevres);
-    }
     if (!lib.isArray(arry)) {
       return [];
+    }
+    if (this.parallel) {
+      return this.goParallel(arry);
+    }
+    if (this.index >= 0) {
+      this.onItem(prevres);
     }
     this.index ++;
     if (this.index >= arry.length) {
@@ -60,6 +64,32 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   DescriptorArrayJobCore.prototype.steps = [
     'stepOne'
   ];
+
+  DescriptorArrayJobCore.prototype.goParallel = function (arry) {
+    var i, results, elem, oneres, _ress, _i, promises;
+    results = [];
+    _ress = results;
+    promises = [];
+    for (i=0; i<arry.length; i++) {
+      elem = arry[i];
+      oneres = this.doOneItem(elem);
+      if (q.isThenable(oneres)) {
+        results.push(null);
+        _i = i;
+        oneres.then(setter.bind(null, _ress, _i));
+        promises.push(oneres);
+        _i = null;
+        continue;
+      }
+      results.push(oneres);
+    }
+    _ress = null;
+    return promises.length>0 ? q.all(promises).then(qlib.returner(results)) : results;
+  };
+
+  function setter (results, index, result) {
+    results[index] = result;
+  }
 
   mylib.DescriptorArrayJobCore = DescriptorArrayJobCore;
 

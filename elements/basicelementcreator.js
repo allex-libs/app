@@ -250,7 +250,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       elem = this.findById(splits[0]);
     }
     if (!elem) {
-      throw new lib.Error('INVALID_PATH', 'Path '+path+' did not produce a valid first element');
+      throw new lib.Error('INVALID_PATH', 'Element '+this.id+' does not have element '+path);
     }
     return splits[1] ? elem.getElement(splits[1]) : elem;
   };
@@ -317,7 +317,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype._getHook = function (name) {
     var hook = this._hooks.get(name);
-    if (!hook) throw new Error('Hook '+name+' not supported');
+    //if (!hook) throw new Error('Hook '+name+' not supported');
     return hook;
   };
 
@@ -328,6 +328,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       return;
     }
     var hook = this._getHook(name);
+    if (!hook) {
+      return;
+    }
 
     if (lib.isFunction(ftions)) {
       ftions = [ftions];
@@ -337,7 +340,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     for (var i = 0; i < ftions.length; i++){
       listeners[i] = hook.attach (ftions[i]);
     }
-    this._listeners.add(name, listeners);
+    this._listeners.replace(name, listeners);
   };
 
   BasicElement.prototype.fireHook = function (name, args) {

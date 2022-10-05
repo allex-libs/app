@@ -34,6 +34,7 @@ function createDataSourcesCreator (lib, dataSuite, arryopslib, mylib) {
     };
 
   };
+  DataSourcesCreatorJobCore.prototype.parallel = true;
 
   mylib.DataSourcesCreatorJobCore = DataSourcesCreatorJobCore;
 }

@@ -43,6 +43,7 @@ function createCommandsCreator (lib, dataSuite, arryopslib, mylib) {
       };
     }
   };
+  CommandsCreatorJobCore.prototype.parallel = true;
 
   mylib.CommandsCreatorJobCore = CommandsCreatorJobCore;
 }

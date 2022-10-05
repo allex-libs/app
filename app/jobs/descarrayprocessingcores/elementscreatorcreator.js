@@ -19,12 +19,10 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     ret = d.promise;
     elemdesc.options = elemdesc.options || {};
     descriptorapi.pushToArraySafe('onInitiallyLoaded', elemdesc.options, onLoadResolver.bind(null, d));
+    descriptorapi.pushToArraySafe('onInitialized', elemdesc.options, onInitResolver.bind(null, d));
     elem = this.doCreate(elemdesc);
     d = null;
-    if (elem && elem.get('actual')) {
-      return ret;
-    }
-    return elem;
+    return ret;
   };
   ElementsCreatorJobCore.prototype.doCreate = function (elemdesc) {
     var parentandfinalname, makeupdesc;
@@ -64,8 +62,14 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
   function onLoadResolver (d, elem) {
     d.resolve(elem);
   }
+  function onInitResolver (d, elem) {
+    if (elem && elem.get('actual')) {
+      return; //wait for load
+    }
+    d.resolve(elem);
+  }
 
-
+  ElementsCreatorJobCore.prototype.parallel = true;
   mylib.ElementsCreatorJobCore = ElementsCreatorJobCore;
 }
 module.exports = createElementsCreator;

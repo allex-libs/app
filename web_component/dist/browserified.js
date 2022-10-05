@@ -623,7 +623,8 @@ module.exports = createAppJob;
 function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   'use strict';
 
-  var q = lib.q;
+  var q = lib.q,
+    qlib = lib.qlib;
 
   function DescriptorArrayJobCore (descriptorloaderjobcore, arrayname) {
     this.descriptorLoaderJobCore = descriptorloaderjobcore;
@@ -657,11 +658,14 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   };
   DescriptorArrayJobCore.prototype.stepOne = function (prevres) {
     var arry = this.array(), oneres;
-    if (this.index >= 0) {
-      this.onItem(prevres);
-    }
     if (!lib.isArray(arry)) {
       return [];
+    }
+    if (this.parallel) {
+      return this.goParallel(arry);
+    }
+    if (this.index >= 0) {
+      this.onItem(prevres);
     }
     this.index ++;
     if (this.index >= arry.length) {
@@ -682,6 +686,32 @@ function createBaseDescriptorArrayProcessingCore (lib, mylib) {
   DescriptorArrayJobCore.prototype.steps = [
     'stepOne'
   ];
+
+  DescriptorArrayJobCore.prototype.goParallel = function (arry) {
+    var i, results, elem, oneres, _ress, _i, promises;
+    results = [];
+    _ress = results;
+    promises = [];
+    for (i=0; i<arry.length; i++) {
+      elem = arry[i];
+      oneres = this.doOneItem(elem);
+      if (q.isThenable(oneres)) {
+        results.push(null);
+        _i = i;
+        oneres.then(setter.bind(null, _ress, _i));
+        promises.push(oneres);
+        _i = null;
+        continue;
+      }
+      results.push(oneres);
+    }
+    _ress = null;
+    return promises.length>0 ? q.all(promises).then(qlib.returner(results)) : results;
+  };
+
+  function setter (results, index, result) {
+    results[index] = result;
+  }
 
   mylib.DescriptorArrayJobCore = DescriptorArrayJobCore;
 
@@ -753,6 +783,7 @@ function createCommandsCreator (lib, dataSuite, arryopslib, mylib) {
       };
     }
   };
+  CommandsCreatorJobCore.prototype.parallel = true;
 
   mylib.CommandsCreatorJobCore = CommandsCreatorJobCore;
 }
@@ -794,6 +825,7 @@ function createDataSourcesCreator (lib, dataSuite, arryopslib, mylib) {
     };
 
   };
+  DataSourcesCreatorJobCore.prototype.parallel = true;
 
   mylib.DataSourcesCreatorJobCore = DataSourcesCreatorJobCore;
 }
@@ -820,12 +852,10 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     ret = d.promise;
     elemdesc.options = elemdesc.options || {};
     descriptorapi.pushToArraySafe('onInitiallyLoaded', elemdesc.options, onLoadResolver.bind(null, d));
+    descriptorapi.pushToArraySafe('onInitialized', elemdesc.options, onInitResolver.bind(null, d));
     elem = this.doCreate(elemdesc);
     d = null;
-    if (elem && elem.get('actual')) {
-      return ret;
-    }
-    return elem;
+    return ret;
   };
   ElementsCreatorJobCore.prototype.doCreate = function (elemdesc) {
     var parentandfinalname, makeupdesc;
@@ -865,8 +895,14 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
   function onLoadResolver (d, elem) {
     d.resolve(elem);
   }
+  function onInitResolver (d, elem) {
+    if (elem && elem.get('actual')) {
+      return; //wait for load
+    }
+    d.resolve(elem);
+  }
 
-
+  ElementsCreatorJobCore.prototype.parallel = true;
   mylib.ElementsCreatorJobCore = ElementsCreatorJobCore;
 }
 module.exports = createElementsCreator;
@@ -1252,13 +1288,18 @@ function createDataElementMixin (lib, mylib) {
     if (!this.$element) {
       return;
     }
+    this.__children.traverse(function (c) {
+      //c.destroy();
+    });
     dm = this.getConfigVal('data_markup');
     if (!dm) {
       return;
     }
     m = this.produceDataMarkup(dm, data);
     this.$element.html(m);
-    this.__children.traverse(function (c) {c.initialize();});
+    this.__children.traverse(function (c) {
+      c.initializeFrom({});
+    });
     //this.$element.html(this.produceDataMarkup.bind(this, dm, data));
   };
 
@@ -2013,7 +2054,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       elem = this.findById(splits[0]);
     }
     if (!elem) {
-      throw new lib.Error('INVALID_PATH', 'Path '+path+' did not produce a valid first element');
+      throw new lib.Error('INVALID_PATH', 'Element '+this.id+' does not have element '+path);
     }
     return splits[1] ? elem.getElement(splits[1]) : elem;
   };
@@ -2080,7 +2121,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype._getHook = function (name) {
     var hook = this._hooks.get(name);
-    if (!hook) throw new Error('Hook '+name+' not supported');
+    //if (!hook) throw new Error('Hook '+name+' not supported');
     return hook;
   };
 
@@ -2091,6 +2132,9 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       return;
     }
     var hook = this._getHook(name);
+    if (!hook) {
+      return;
+    }
 
     if (lib.isFunction(ftions)) {
       ftions = [ftions];
@@ -2100,7 +2144,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     for (var i = 0; i < ftions.length; i++){
       listeners[i] = hook.attach (ftions[i]);
     }
-    this._listeners.add(name, listeners);
+    this._listeners.replace(name, listeners);
   };
 
   BasicElement.prototype.fireHook = function (name, args) {
