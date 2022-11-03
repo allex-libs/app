@@ -62,6 +62,10 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
+    this.clearConfigHooks('onInitialized');
+    this.clearConfigHooks('onInitiallyLoaded');
+    this.clearConfigHooks('onLoaded');
+    this.clearConfigHooks('onActual');
     if (this.loadedEnvironment) {
       if (this.loadedEnvironment.dynamic) {
         this.loadedEnvironment.dynamic.destroy();
@@ -169,6 +173,16 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
+  };
+
+  BasicElement.prototype.queueMethodInvocation = function (methodname, args) {
+    return this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+      new jobcores.MethodInvoker(
+        this,
+        methodname,
+        args
+      )
+    ));
   };
 
   BasicElement.prototype.DEFAULT_CONFIG = function () {
@@ -363,6 +377,13 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     }
     hook.destroy();
     hook = null;
+  };
+
+  BasicElement.prototype.clearConfigHooks = function (configvalname) {
+    var cfh = this.getConfigVal(configvalname);
+    if (lib.isArray(cfh)) {
+      cfh.splice(0, cfh.length);
+    }
   };
 
   BasicElement.prototype.initialEnvironmentDescriptor = function () {
