@@ -72,22 +72,18 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
   function destroyLinkOrLogic (name, thingy) {
     //console.log('should destroy', name, thingy);
     var first, second;
+    if (isComposite(thingy)) {
+      thingy.forEach(destroyLinkOrLogic.bind(null, name));
+      name = null;
+      return;
+    }
     if (!lib.isArray(thingy)) {
       console.error('what is', name, '?', thingy);
       return;
     }
-    if (thingy.length == 1) {
-      destroyLinkOrLogic(name, thingy[0]);
-      return;
-    }
     if (thingy.length!=2) {
-      thingy.forEach(destroyLinkOrLogic.bind(null, name));
-      name = null;
-      return;
-      /*
       console.error('what is', name, '?', thingy);
       return;
-      */
     }
     first = thingy[0];
     second = thingy[1];
@@ -102,7 +98,23 @@ function createLinksAndLogicDestroyableMixin (lib, mylib) {
     }
   }
 
+  function isComposite (thingy) {
+    return (
+      thingy &&
+      lib.isArray(thingy) &&
+      thingy.every(isSubComposite)
+    )
+  }
+  
+  function isSubComposite (thingy) {
+    return (
+      thingy &&
+      lib.isArray(thingy) &&
+      thingy.length==2 &&
+      thingy[0].instance
+    )
+  }
+  
   mylib.LinksAndLogicDestroyableMixin = LinksAndLogicDestroyableMixin;
 }
-
 module.exports = createLinksAndLogicDestroyableMixin;
