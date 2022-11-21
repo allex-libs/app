@@ -2900,6 +2900,12 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
    * all the `DescriptorHandler` instances mapped to their `name`s
    */
   function bootstrap (descriptors, deschandlers) {
+    var ret = lib.initUid().then(realbootstrap.bind(null, descriptors, deschandlers));
+    descriptors = null;
+    deschandlers = null;
+    return ret;
+  }
+  function realbootstrap (descriptors, deschandlers) {
     var promises = [];
     //module.APP = applib.createApp(ALLEX_CONFIGURATION.APP);
     createApp();
