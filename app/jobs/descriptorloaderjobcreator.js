@@ -143,7 +143,11 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     env.addDataCommands(envres.envdesc.options.datacommands);
   };
   DescriptorLoaderJobCore.prototype.addElement = function (el) {
-    var id = el.get('id');
+    var id = el.myNameOnMasterEnvironment(); //el.get('id');
+    var check = this.app.elements.get(id);
+    if (check) {
+      console.log('wut?', check);
+    }
     this.app.elements.add(id, el);
     this.descriptorHandler.addElementID(id);
   };

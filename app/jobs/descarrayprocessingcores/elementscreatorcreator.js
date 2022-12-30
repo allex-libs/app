@@ -25,14 +25,16 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     return ret;
   };
   ElementsCreatorJobCore.prototype.doCreate = function (elemdesc) {
-    var parentandfinalname, makeupdesc;
+    var parentandfinalname, makeupdesc, createdbyparent;
     parentandfinalname = parentAndFinalNameForElementDescriptor(this.app(), elemdesc);
     if (!parentandfinalname) {
       throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(elemdesc)+' is not a valid element descriptor');
     }
     if (parentandfinalname.parent) {
       makeupdesc = lib.extend(lib.pickExcept(elemdesc, ['name']), {name: parentandfinalname.name});
-      return parentandfinalname.parent.createElement(makeupdesc);
+      createdbyparent = parentandfinalname.parent.createElement(makeupdesc);
+      this.creationCB(createdbyparent);
+      return createdbyparent;
     }
     return BasicElement.createElement (elemdesc, this.creationCB);
   };

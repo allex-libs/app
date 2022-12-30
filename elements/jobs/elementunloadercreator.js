@@ -13,6 +13,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
     if (!ok.ok) {
       return ok.val;
     }
+    if (this.destroyable.loadedEnvironment && this.destroyable.loadedEnvironment.dynamic) {
+      this.destroyable.loadedEnvironment.dynamic.destroy();
+      this.destroyable.loadedEnvironment.dynamic = null;
+    }
     var promises = lib.isArray(this.destroyable.resourcereqs)
       ?
       this.destroyable.resourcereqs.map(this.unloadResourceReq.bind(this))

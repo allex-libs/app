@@ -858,14 +858,16 @@ function createElementsCreator (lib, BasicElement, descriptorapi, mylib) {
     return ret;
   };
   ElementsCreatorJobCore.prototype.doCreate = function (elemdesc) {
-    var parentandfinalname, makeupdesc;
+    var parentandfinalname, makeupdesc, createdbyparent;
     parentandfinalname = parentAndFinalNameForElementDescriptor(this.app(), elemdesc);
     if (!parentandfinalname) {
       throw new lib.Error('INVALID_ELEMENT_DESCRIPTOR', JSON.stringify(elemdesc)+' is not a valid element descriptor');
     }
     if (parentandfinalname.parent) {
       makeupdesc = lib.extend(lib.pickExcept(elemdesc, ['name']), {name: parentandfinalname.name});
-      return parentandfinalname.parent.createElement(makeupdesc);
+      createdbyparent = parentandfinalname.parent.createElement(makeupdesc);
+      this.creationCB(createdbyparent);
+      return createdbyparent;
     }
     return BasicElement.createElement (elemdesc, this.creationCB);
   };
@@ -1120,7 +1122,11 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     env.addDataCommands(envres.envdesc.options.datacommands);
   };
   DescriptorLoaderJobCore.prototype.addElement = function (el) {
-    var id = el.get('id');
+    var id = el.myNameOnMasterEnvironment(); //el.get('id');
+    var check = this.app.elements.get(id);
+    if (check) {
+      console.log('wut?', check);
+    }
     this.app.elements.add(id, el);
     this.descriptorHandler.addElementID(id);
   };
@@ -2621,6 +2627,10 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
     var ok = this.okToGo();
     if (!ok.ok) {
       return ok.val;
+    }
+    if (this.destroyable.loadedEnvironment && this.destroyable.loadedEnvironment.dynamic) {
+      this.destroyable.loadedEnvironment.dynamic.destroy();
+      this.destroyable.loadedEnvironment.dynamic = null;
     }
     var promises = lib.isArray(this.destroyable.resourcereqs)
       ?
