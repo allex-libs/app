@@ -40,14 +40,16 @@ function createCommand (lib) {
     ret = this.environment.commands.waitFor(this.command).then(
       executeOnTarget.bind(null, args)
     );
+    //lib.qlib.promise2console(ret, this.command+'('+JSON.stringify(args)+')');
     args = null;
     return ret;
   };
       
   function executeOnTarget (args, target) {
     //var target = this.environment.commands.get(this.command);
-    if (!target) return q.reject(new Error('No target'));
-
+    if (!target) {
+      throw new Error('No target');
+    }
     return target.execute.apply (target, args);
   };
 
