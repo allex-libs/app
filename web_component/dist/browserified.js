@@ -104,7 +104,9 @@ function create (lib, Hierarchy, bufferableeventlib) {
   };
 
   BasicParent.prototype.unbufferAllBufferableHookCollections = function () {
-    this.__children.traverse(unbufferAllBufferableHookCollections);
+    if (this.__children) {
+      this.__children.traverse(unbufferAllBufferableHookCollections);
+    }
     BufferableHookCollectionContainerMixin.prototype.unbufferAllBufferableHookCollections.call(this);
   };
 
