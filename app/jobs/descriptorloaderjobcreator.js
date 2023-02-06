@@ -148,6 +148,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     if (check) {
       console.log('wut?', check);
     }
+    //console.log('adding', id);
     this.app.elements.add(id, el);
     this.descriptorHandler.addElementID(id);
   };

@@ -1131,6 +1131,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     if (check) {
       console.log('wut?', check);
     }
+    //console.log('adding', id);
     this.app.elements.add(id, el);
     this.descriptorHandler.addElementID(id);
   };
@@ -1792,6 +1793,34 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     this.elementIDs.push(id);
   };
 
+
+  //on element destruction
+  DescriptorHandler.ackElementLosingParent = function (el) {
+    var app = ourlib.App, elements;
+    if (!(app && app.elements)) {
+      return;
+    }
+    if (!(el && el.__parent && el.__parent.id)) {
+      return;
+    }
+    elements = app.elements;
+    //console.log('==> ackElementLosingParent', el.myNameOnMasterEnvironment());
+    removeElementFromElements(elements, el);
+    //console.log('============');
+    elements = null;
+    app = null;
+  };
+
+  function removeElementFromElements (elems, el) {
+    var id = el.myNameOnMasterEnvironment(), check;
+    el.__children.traverse(removeElementFromElements.bind(null, elems));
+    check = elems.remove(id);
+    //console.log('removing', id, el.__parent ? 'with' : 'w/o', 'parent', check ? 'success' : 'fail');
+    elems = null;
+  }
+
+  //endof on element destruction
+
   function destroyMapElement (map, elementid) {
     if (!elementid) {
       return;
@@ -1876,6 +1905,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
+    //DescriptorHandler.ackElementDestroyed(this);
     this.clearConfigHooks('onInitialized');
     this.clearConfigHooks('onInitiallyLoaded');
     this.clearConfigHooks('onLoaded');
@@ -1935,6 +1965,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
   lib.inheritMethods (BasicElement, Gettable, 'get');
   Configurable.addMethods(BasicElement);
+
+  BasicElement.prototype.removeChild = function (child) {
+    DescriptorHandler.ackElementLosingParent(child);
+    return BasicParent.prototype.removeChild.call(this, child);
+  };
 
   BasicElement.prototype.initializeFrom = function (desc) {
     var subelements;

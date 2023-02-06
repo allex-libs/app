@@ -62,6 +62,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.__cleanUp = function () {
     //console.log(this.constructor.name, this.id, 'dying');
+    //DescriptorHandler.ackElementDestroyed(this);
     this.clearConfigHooks('onInitialized');
     this.clearConfigHooks('onInitiallyLoaded');
     this.clearConfigHooks('onLoaded');
@@ -121,6 +122,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   lib.inheritMethods (BasicElement, Child, 'set__parent', 'rootParent', 'leaveParent');
   lib.inheritMethods (BasicElement, Gettable, 'get');
   Configurable.addMethods(BasicElement);
+
+  BasicElement.prototype.removeChild = function (child) {
+    DescriptorHandler.ackElementLosingParent(child);
+    return BasicParent.prototype.removeChild.call(this, child);
+  };
 
   BasicElement.prototype.initializeFrom = function (desc) {
     var subelements;

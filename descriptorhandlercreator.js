@@ -61,6 +61,34 @@ function createDescriptorHandler (lib, mixins, ourlib) {
     this.elementIDs.push(id);
   };
 
+
+  //on element destruction
+  DescriptorHandler.ackElementLosingParent = function (el) {
+    var app = ourlib.App, elements;
+    if (!(app && app.elements)) {
+      return;
+    }
+    if (!(el && el.__parent && el.__parent.id)) {
+      return;
+    }
+    elements = app.elements;
+    //console.log('==> ackElementLosingParent', el.myNameOnMasterEnvironment());
+    removeElementFromElements(elements, el);
+    //console.log('============');
+    elements = null;
+    app = null;
+  };
+
+  function removeElementFromElements (elems, el) {
+    var id = el.myNameOnMasterEnvironment(), check;
+    el.__children.traverse(removeElementFromElements.bind(null, elems));
+    check = elems.remove(id);
+    //console.log('removing', id, el.__parent ? 'with' : 'w/o', 'parent', check ? 'success' : 'fail');
+    elems = null;
+  }
+
+  //endof on element destruction
+
   function destroyMapElement (map, elementid) {
     if (!elementid) {
       return;
