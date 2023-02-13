@@ -365,7 +365,6 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.fireHook = function (name, args) {
     if (!this._hooks) {
-      console.error('already dead');
       return;
     }
     var hook = this._hooks.get(name);

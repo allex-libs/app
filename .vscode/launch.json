@@ -7,7 +7,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Component Build",
+      "name": "applib Build",
       "skipFiles": [
         "<node_internals>/**"
       ],

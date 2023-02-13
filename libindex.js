@@ -36,6 +36,28 @@ function libCreator (execlib, Linker, Hierarchy, environmentlib, bufferableevent
     return ret;
   }
 
+  function queryAppProperty (propstring) {
+    return RESULT.App.queryProperty(propstring);
+  }
+  RESULT.queryAppProperty = queryAppProperty;
+  function queryAppProperties (queryobj) {
+    return RESULT.App.queryProperties(queryobj);
+  }
+  RESULT.queryAppProperties = queryAppProperties;
+  function queryAppElement (elementpath) {
+    if (!(RESULT.App && RESULT.App.elements)) {
+      return void 0;
+    }
+    return RESULT.App.elements.get(elementpath);
+  }
+  RESULT.queryAppElement = queryAppElement;
+  function safeRunMethodOnAppElement (elementpath, methodname) {
+    var elem = queryAppElement(elementpath);
+    if (elem && lib.isFunction(elem[methodname])) {
+      return elem[methodname].apply(elem, Array.prototype.slice.call(arguments, 2));
+    }
+  }
+  RESULT.safeRunMethodOnAppElement = safeRunMethodOnAppElement;
   function onResourceParams (promises, params, resourcename) {
     promises.push(Resources.resourceFactory(RESULT.App, params));
   }

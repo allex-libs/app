@@ -3,7 +3,8 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
 
   var q = lib.q,
     qlib = lib.qlib,
-    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers, descriptorapi, arryopslib);
+    joblib = require('./jobs')(lib, dataSuite, Resources, environtmentFactory, BasicElement, executeModifiers, descriptorapi, arryopslib),
+    jobcores = require('./jobcores')(lib);
 
   /**
    * @class
@@ -155,6 +156,17 @@ function createApp (lib, dataSuite, Elements, Hierarchy, Resources, BasicParent,
     if (c) {
       return c.execute.bind(c);
     }
+  };
+
+  App.prototype.queryProperty = function (propname) {
+    if (!this._link) {
+      return null;
+    }
+    return this._link.getPropertyValue(propname);
+  };
+
+  App.prototype.queryProperties = function (queryobj) {
+    return qlib.newSteppedJobOnSteppedInstance(new jobcores.QueryProperties(this, queryobj)).go();
   };
 
   App.prototype.addAppLink = lib.dummyFunc;
