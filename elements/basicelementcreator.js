@@ -187,13 +187,17 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     postInitialize(this);
   };
 
-  BasicElement.prototype.loadAdHocEnvironment = function (adhocname) {
-    return this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+  BasicElement.prototype.loadAdHocEnvironmentJob = function (adhocname, config) {
+    return qlib.newSteppedJobOnSteppedInstance(
       new jobs.LoadAdHocEnvironmentJobCore(
         this,
-        adhocname
+        adhocname,
+        config
       )
-    ));
+    );
+  };
+  BasicElement.prototype.loadAdHocEnvironment = function (adhocname, config) {
+    return this.jobs.run('.', this.loadAdHocEnvironmentJob(adhocname, config));
   };
 
   BasicElement.prototype.queueMethodInvocation = function (methodname, args) {

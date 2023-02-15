@@ -104,13 +104,16 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   mylib.LoadActualEnvironment = LoadActualEnvironmentJob;
 
 
-  function LoadAdHocEnvironmentJobCore (elem, envname) {
+  function LoadAdHocEnvironmentJobCore (elem, envname, config) {
     LoadEnvironmentJobCore.call(this, elem);
     this.envname = envname;
+    this.config = config;
     this.environmentDescriptorMethodName = 'environmentDescriptor_for_'+this.envname;
   }
   lib.inherit(LoadAdHocEnvironmentJobCore, LoadEnvironmentJobCore);
   LoadAdHocEnvironmentJobCore.prototype.destroy = function () {
+    this.environmentDescriptorMethodName = null;
+    this.config = null;
     this.envname = null;
     LoadEnvironmentJobCore.prototype.destroy.call(this);
   };
@@ -130,7 +133,10 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
       env.destroy();
     }
     return LoadEnvironmentJobCore.prototype.init.call(this);
-  }
+  };
+  LoadAdHocEnvironmentJobCore.prototype.getEnvironmentDescriptor = function () {
+    return this.elem[this.environmentDescriptorMethodName](this.elem.myNameOnMasterEnvironment(), this.config);
+  };
   LoadAdHocEnvironmentJobCore.prototype.finalize = function () {
     this.elem.adHocEnvironments.add(this.envname, this.envLoader);
   };
