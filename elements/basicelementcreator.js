@@ -51,6 +51,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       static: null,
       dynamic: null
     };
+    this.adHocEnvironments = null; //will be created per request
     this._addHook ('onInitialized');
     this._addHook('onInitiallyLoaded');
     this._addHook ('onActual');
@@ -67,6 +68,11 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.clearConfigHooks('onInitiallyLoaded');
     this.clearConfigHooks('onLoaded');
     this.clearConfigHooks('onActual');
+    if (this.adHocEnvironments) {
+      lib.containerDestroyAll(this.adHocEnvironments);
+      this.adHocEnvironments.destroy();
+    }
+    this.adHocEnvironments = null;
     if (this.loadedEnvironment) {
       if (this.loadedEnvironment.dynamic) {
         this.loadedEnvironment.dynamic.destroy();
@@ -179,6 +185,15 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.set('initialized', true);
     handleLoading(this, this.getConfigVal('actual'));
     postInitialize(this);
+  };
+
+  BasicElement.prototype.loadAdHocEnvironment = function (adhocname) {
+    return this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+      new jobs.LoadAdHocEnvironmentJobCore(
+        this,
+        adhocname
+      )
+    ));
   };
 
   BasicElement.prototype.queueMethodInvocation = function (methodname, args) {

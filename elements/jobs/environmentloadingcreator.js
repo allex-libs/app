@@ -16,19 +16,24 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
     this.elem = null;
   };
   LoadEnvironmentJobCore.prototype.shouldContinue = function () {
-    if (this.elem && this.elem.destroyed) {
-      return;
+    if (!this.elem) {
+      throw new lib.Error('NO_ELEM', this.constructor.name+' needs to have elem');
     }
-    return new lib.Error('ELEMENT_DESTROYED', 'No Element to load Environment and Elements on');
+    if (!this.elem.destroyed) {
+      throw new lib.Error('ELEMENT_DESTROYED', 'No Element to load Environment and Elements on');
+    }
+    if (!lib.isFunction(this.elem[this.environmentDescriptorMethodName])) {
+      throw new lib.Error('NO_ENVIRONMENTDESCRIPTOR_METHOD', this.constructor.name+' needs to have a method named '+this.environmentDescriptorMethodName);
+    }
   }
   LoadEnvironmentJobCore.prototype.init = function () {
     if (this.elem.createIntegrationEnvironmentDescriptor) {
       console.error(this.elem.constructor.name, 'has to move createIntegrationEnvironmentDescriptor to actualEnvironmentDescriptor')
-      return new lib.Error('IMPLEMENTATION_OBSOLETE', 'createIntegrationEnvironmentDescriptor is obsolete');
+      throw new lib.Error('IMPLEMENTATION_OBSOLETE', 'createIntegrationEnvironmentDescriptor is obsolete');
     }
     if (this.elem.lateElementDescriptors) {
       console.error(this.elem.constructor.name, 'has to move lateElementDescriptors to actualElementDescriptors')
-      return new lib.Error('IMPLEMENTATION_OBSOLETE', 'lateElementDescriptors is obsolete');
+      throw new lib.Error('IMPLEMENTATION_OBSOLETE', 'lateElementDescriptors is obsolete');
     }
   };
   LoadEnvironmentJobCore.prototype.getEnvironmentDescriptor = function () {
@@ -58,19 +63,6 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
     'onEnvironment',
     'finalize'
   ];
-  LoadEnvironmentJobCore.prototype.createOneElement = function (elemdesc) {
-    var elem = this.elem.createElement(elemdesc), d = q.defer(), ret = d.promise;
-    if (elemdesc && elemdesc.options && elemdesc.options.actual) {
-      elem.loadEvent.attachForSingleShot(elemLoaded.bind(null, d));
-      d = null;
-      return ret;
-    }
-    d.resolve(elem);
-    return ret;
-  };
-  function elemLoaded (defer, elem) {
-    defer.resolve(elem);
-  }
 
   function LoadInitialEnvironmentJobCore (elem) {
     LoadEnvironmentJobCore.call(this, elem);
@@ -110,5 +102,38 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
   }
   lib.inherit(LoadActualEnvironmentJob, SteppedJobOnSteppedInstance);
   mylib.LoadActualEnvironment = LoadActualEnvironmentJob;
+
+
+  function LoadAdHocEnvironmentJobCore (elem, envname) {
+    LoadEnvironmentJobCore.call(this, elem);
+    this.envname = envname;
+    this.environmentDescriptorMethodName = 'environmentDescriptor_for_'+this.envname;
+  }
+  lib.inherit(LoadAdHocEnvironmentJobCore, LoadEnvironmentJobCore);
+  LoadAdHocEnvironmentJobCore.prototype.destroy = function () {
+    this.envname = null;
+    LoadEnvironmentJobCore.prototype.destroy.call(this);
+  };
+  LoadAdHocEnvironmentJobCore.prototype.shouldContinue = function () {
+    if (!lib.isString(this.envname)) {
+      throw new lib.Error('NO_ENVNAME', this.constructor.name+' needs to have envname (String)');
+    }
+    return LoadEnvironmentJobCore.prototype.shouldContinue.call(this);
+  };
+  LoadAdHocEnvironmentJobCore.prototype.init = function () {
+    var env;
+    if (!this.elem.adHocEnvironments) {
+      this.elem.adHocEnvironments = new lib.Map();
+    }
+    env = this.elem.adHocEnvironments.remove(this.envname);
+    if (env) {
+      env.destroy();
+    }
+    return LoadEnvironmentJobCore.prototype.init.call(this);
+  }
+  LoadAdHocEnvironmentJobCore.prototype.finalize = function () {
+    this.elem.adHocEnvironments.add(this.envname, this.envLoader);
+  };
+  mylib.LoadAdHocEnvironmentJobCore = LoadAdHocEnvironmentJobCore;
 }
 module.exports = createEnvironmentFunctionality;
