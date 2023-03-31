@@ -48,7 +48,6 @@ function createBasicElementInitializer (lib, DescriptorHandler, Linker, jobs, my
     this.element.fireInitializationDone();
   };
 
-
   BasicElementInitializerJobCore.prototype.steps = [
     'loadElements',
     'loadInitialEnvironment',

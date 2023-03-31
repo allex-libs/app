@@ -148,8 +148,8 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.destroy(reason);
   }
 
-  function handleLoading (be, newactual) {
-    be[newactual ? 'load' : 'unload']();
+  function handleLoading () {
+    this[this.actual ? 'load' : 'unload']();
   };
 
   function preInitialize (elem) {
@@ -183,7 +183,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
     this.attachHook('onActual', this.getConfigVal('onActual'));
 
     this.set('initialized', true);
-    handleLoading(this, this.getConfigVal('actual'));
+    handleLoading.call(this);
     postInitialize(this);
   };
 
@@ -223,7 +223,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
       return;
     }
     this.actual = val;
-    handleLoading(this, val);
+    handleLoading.call(this);
 
     this.fireHook ('onActual', [this, val]);
     return true;
