@@ -23,7 +23,7 @@ function createEnvironmentFunctionality (lib, DescriptorHandler, mylib) {
       throw new lib.Error('ELEMENT_DESTROYED', 'No Element to load Environment and Elements on');
     }
     if (!lib.isFunction(this.elem[this.environmentDescriptorMethodName])) {
-      throw new lib.Error('NO_ENVIRONMENTDESCRIPTOR_METHOD', this.constructor.name+' needs to have a method named '+this.environmentDescriptorMethodName);
+      throw new lib.Error('NO_ENVIRONMENTDESCRIPTOR_METHOD', this.elem.constructor.name+' needs to have a method named '+this.environmentDescriptorMethodName);
     }
   }
   LoadEnvironmentJobCore.prototype.init = function () {
