@@ -2443,7 +2443,7 @@ function createBaseBasicElementJobCore (lib, mylib) {
       return new lib.Error('NO_ELEMENT', this.constructor.name+' cannot proceed without an Element');
     }
     if (!this.element.destroyed) {
-      return new lib.Error('ELEMENT_ALREADY_DESTROYED', this.constructor.name+' cannot proceed, the Element is already destroyed');
+      return new lib.Error('ELEMENT_ALREADY_DESTROYED', this.constructor.name+' cannot proceed, the Element '+this.element.constructor.name+' is already destroyed');
     }
   };
 
