@@ -136,7 +136,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     if (envres.new) {
       this.app.environments.add(name, env);
       this.descriptorHandler.environmentNames.push(name);
-      return;
+      //return;
     }
     env.addDataSources(envres.envdesc.options.datasources);
     env.addCommands(envres.envdesc.options.commands);

@@ -454,6 +454,12 @@ function createDataSource (lib, dataSuite) {
     return true;
   };
   AppSideDataSource.prototype.get_environmentdata = function () {
+    /*
+    var envds = this.environment ? this.environment.dataSources.get(this.source_name) : null;
+    if (envds) {
+      return envds.data;
+    }
+    */
     return this.data;
   };
   AppSideDataSource.prototype.set_environmentdata = function (data) {
@@ -1219,7 +1225,7 @@ function createDescriptorLoaderJob (lib, AppJobCore, descarryprocessingcoreslib,
     if (envres.new) {
       this.app.environments.add(name, env);
       this.descriptorHandler.environmentNames.push(name);
-      return;
+      //return;
     }
     env.addDataSources(envres.envdesc.options.datasources);
     env.addCommands(envres.envdesc.options.commands);
