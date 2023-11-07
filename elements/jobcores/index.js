@@ -6,8 +6,6 @@ function createBasicElementJobCores(lib, Resources, DescriptorHandler, Linker, j
   require('./elementsloadercreator')(lib, DescriptorHandler, mylib);
   require('./initializercreator')(lib, DescriptorHandler, Linker, jobs, mylib);
 
-  require('./methodinvokercreator')(lib, mylib);
-
   return mylib;
 }
 module.exports = createBasicElementJobCores;

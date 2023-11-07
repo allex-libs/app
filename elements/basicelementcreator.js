@@ -202,9 +202,18 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
 
   BasicElement.prototype.queueMethodInvocation = function (methodname, args) {
     return this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
-      new jobcores.MethodInvoker(
+      new qlib.jobcores.MethodInvoker(
         this,
         methodname,
+        args
+      )
+    ));
+  };
+  BasicElement.prototype.queueFunctionInvocation = function (func, args) {
+    return this.jobs.run('.', qlib.newSteppedJobOnSteppedInstance(
+      new qlib.jobcores.FunctionInvoker(
+        this,
+        func,
         args
       )
     ));

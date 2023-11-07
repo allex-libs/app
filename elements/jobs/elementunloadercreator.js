@@ -67,13 +67,6 @@ function createElementUnloaderJob (lib, JobOnDestroyable, Resources, mylib) {
     this.resolve(resultuptonow);
   };
 
-  ElementUnloaderJob.prototype.fireLoadEvent = function () {
-    if (!this.peekToProceed()) {
-      return;
-    }
-    this.destroyable.loadEvent.fire.apply(this.destroyable, arguments);
-  };
-
   mylib.ElementUnloaderJob = ElementUnloaderJob;
 }
 

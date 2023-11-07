@@ -62,9 +62,11 @@ function createDataElementMixin (lib, mylib) {
     if (!this.$element) {
       return;
     }
+    /*
     this.__children.traverse(function (c) {
-      //c.destroy();
+      c.destroy();
     });
+    */
     dm = this.getConfigVal('data_markup');
     if (!dm) {
       return;

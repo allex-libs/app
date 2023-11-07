@@ -77,7 +77,7 @@ function createDataSource (lib, dataSuite) {
     if (this.data === val) return false;
     if (!this.subSources) return false;
     this.data = val;
-    this.subSources.traverse(valsetter.bind(null, val));
+    this.subSources.reduce(valsetter, val);
     val = null;
     return true;
   };
@@ -94,6 +94,7 @@ function createDataSource (lib, dataSuite) {
   };
   function valsetter (val, subsource, subsourcename) {
     subsource.set('data', val ? val[subsourcename] : null);
+    return val;
   }
 
   AppSideDataSource.prototype.set_environment = function (val) {
@@ -132,8 +133,12 @@ function createDataSource (lib, dataSuite) {
   };
 
   AppSideDataSource.prototype._unbindDS = function () {
+    var ds;
     if (!this.environment || !this.environment.isEstablished()) return;
-    this.environment.dataSources.get(this.source_name).setTarget(null);
+    ds = this.environment.dataSources.get(this.source_name);
+    if (ds) {
+      ds.setTarget(null);
+    }
     this.set('running', false);
   };
 
