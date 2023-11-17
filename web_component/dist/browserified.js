@@ -2094,7 +2094,7 @@ function createBasicElement (lib, Hierarchy, elementFactory, BasicParent, Linker
   };
 
   function onInitializeFailed (reason) {
-    console.error(this.id, 'failed to initialize', reason);
+    console.warn(this.id, 'failed to initialize', reason);
     this.destroy(reason);
   }
 
